@@ -1,0 +1,8 @@
+{
+  "name": "AI Personal Chatbot - Chroma",
+  "description": "A personal AI chatbot with a futuristic UI, capable of connecting to AI providers and interacting with Google services using OAuth 2.0. This version primarily features Gemini integration and Google Calendar/Tasks connectivity.",
+  "requestApiScopes": [
+    "https://www.googleapis.com/auth/calendar",
+    "https://www.googleapis.com/auth/tasks"
+  ]
+}
