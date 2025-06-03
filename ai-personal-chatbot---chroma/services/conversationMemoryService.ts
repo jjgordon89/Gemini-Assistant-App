@@ -41,10 +41,31 @@ class ConversationMemoryService {
   }
 
   /**
+   * Get the current user ID
+   */
+  public getUserId(): string | null {
+    return this.userId;
+  }
+
+  /**
    * Store a message in memory with its embedding
    */
   public async storeMessage(message: Message): Promise<string> {
-    const embedding = await this.embeddingService.embedMessage(message);
+    const embedding = await this.createEmbedding(message);
+    return this.saveMessageToDb(message, embedding);
+  }
+
+  /**
+   * Create an embedding for a message
+   */
+  private async createEmbedding(message: Message): Promise<number[]> {
+    return this.embeddingService.embedMessage(message);
+  }
+
+  /**
+   * Save a message with its embedding to the database
+   */
+  private async saveMessageToDb(message: Message, embedding: number[]): Promise<string> {
     return this.lanceDB.storeMessage(message, embedding, this.userId);
   }
 
@@ -52,8 +73,8 @@ class ConversationMemoryService {
    * Store multiple messages in memory
    */
   public async storeMessages(messages: Message[]): Promise<string[]> {
-    const promises = messages.map(message => this.storeMessage(message));
-    return Promise.all(promises);
+    const storePromises = messages.map(message => this.storeMessage(message));
+    return Promise.all(storePromises);
   }
 
   /**
@@ -76,6 +97,25 @@ class ConversationMemoryService {
   }
 
   /**
+   * Format similar messages as a readable memory context
+   */
+  private formatMemoryContext(similarMessages: Array<{ message: Message; similarity: number }>): string {
+    if (similarMessages.length === 0) {
+      return "No relevant past conversations found.";
+    }
+    
+    const formattedMessages = similarMessages.map(({ message, similarity }) => {
+      const role = message.sender === ChatRole.USER ? "User" : "AI";
+      const formattedDate = message.timestamp.toLocaleString();
+      const similarityPercent = Math.round(similarity * 100);
+      
+      return `[${formattedDate}] ${role}: ${message.text} (Relevance: ${similarityPercent}%)`;
+    }).join('\n\n');
+    
+    return `Relevant past conversations:\n\n${formattedMessages}`;
+  }
+
+  /**
    * Generate contextual memory for a query
    * This creates a formatted string with relevant past conversations
    */
@@ -85,32 +125,24 @@ class ConversationMemoryService {
     threshold: number = 0.7
   ): Promise<string> {
     const similarMessages = await this.findSimilarMessages(query, maxResults, threshold);
-    
-    if (similarMessages.length === 0) {
-      return "No relevant past conversations found.";
+    return this.formatMemoryContext(similarMessages);
+  }
+
+  /**
+   * Validate that a user ID is set before performing user-specific operations
+   */
+  private validateUserIdIsSet(): void {
+    if (!this.userId) {
+      throw new Error('No user ID set for memory operations');
     }
-    
-    // Group messages by similarity to create conversation clusters
-    const memory = similarMessages.map(({ message, similarity }) => {
-      const role = message.sender === ChatRole.USER ? "User" : "AI";
-      const formattedDate = message.timestamp.toLocaleString();
-      const similarityPercent = Math.round(similarity * 100);
-      
-      return `[${formattedDate}] ${role}: ${message.text} (Relevance: ${similarityPercent}%)`;
-    }).join('\n\n');
-    
-    return `Relevant past conversations:\n\n${memory}`;
   }
 
   /**
    * Clear all memory for the current user
    */
   public async clearUserMemory(): Promise<number> {
-    if (!this.userId) {
-      throw new Error('No user ID set for memory operations');
-    }
-    
-    return this.lanceDB.deleteUserMessages(this.userId);
+    this.validateUserIdIsSet();
+    return this.lanceDB.deleteUserMessages(this.userId!);
   }
 
   /**
