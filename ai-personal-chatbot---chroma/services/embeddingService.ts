@@ -83,20 +83,29 @@ export class MockEmbeddingProvider implements EmbeddingProvider {
 // Embedding service factory that creates the appropriate provider
 export class EmbeddingService {
   private static instance: EmbeddingService;
-  private provider: EmbeddingProvider;
+  private static currentApiKey?: string; // Store the key used for the current instance
+  public provider: EmbeddingProvider; // Made public to check type
 
   private constructor(provider: EmbeddingProvider) {
     this.provider = provider;
   }
 
   public static getInstance(apiKey?: string): EmbeddingService {
-    if (!EmbeddingService.instance) {
-      // Use Gemini if API key is provided, otherwise use mock
-      const provider = apiKey ? 
-        new GeminiEmbeddingProvider(apiKey) : 
-        new MockEmbeddingProvider();
-      
+    const isRealApiKey = apiKey && apiKey !== 'YOUR_GEMINI_API_KEY_HERE'; // Placeholder check
+
+    if (!EmbeddingService.instance || EmbeddingService.currentApiKey !== apiKey) {
+      console.log(`EmbeddingService: Re-initializing. Old key: ${EmbeddingService.currentApiKey}, New key: ${apiKey}`);
+      const provider = isRealApiKey
+        ? new GeminiEmbeddingProvider(apiKey)
+        : new MockEmbeddingProvider();
       EmbeddingService.instance = new EmbeddingService(provider);
+      EmbeddingService.currentApiKey = apiKey;
+
+      if (isRealApiKey) {
+         console.log("EmbeddingService: Using GeminiEmbeddingProvider.");
+      } else {
+         console.log("EmbeddingService: Using MockEmbeddingProvider.");
+      }
     }
     return EmbeddingService.instance;
   }

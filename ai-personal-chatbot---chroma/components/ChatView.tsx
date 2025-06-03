@@ -10,9 +10,10 @@ interface ChatViewProps {
   isLoading: boolean;
   error: string | null;
   currentProvider: AiProviderType;
+  apiKeys: Record<AiProviderType, string>; // Add apiKeys to props
 }
 
-export const ChatView: React.FC<ChatViewProps> = ({ messages, onSendMessage, isLoading, error, currentProvider }) => {
+export const ChatView: React.FC<ChatViewProps> = ({ messages, onSendMessage, isLoading, error, currentProvider, apiKeys }) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -29,10 +30,10 @@ export const ChatView: React.FC<ChatViewProps> = ({ messages, onSendMessage, isL
             </div>
             <h2 className="text-2xl font-semibold text-gray-200">Welcome to Chroma AI</h2>
             <p className="mt-2">Using <span className="font-semibold chroma-accent-text">{currentProvider}</span>. Type a message to start chatting.</p>
-            {currentProvider === AiProviderType.GEMINI && process.env.API_KEY === "YOUR_GEMINI_API_KEY_HERE" && (
+            {currentProvider === AiProviderType.GEMINI && apiKeys[AiProviderType.GEMINI] === "YOUR_GEMINI_API_KEY_HERE" && (
                  <p className="mt-2 text-yellow-500 text-sm">
                     <AlertTriangleIcon className="inline w-4 h-4 mr-1" />
-                    Note: Gemini API key is using a placeholder. For full functionality, set your API key.
+                    Note: Gemini API key is using a placeholder. For full functionality, set your API key in Settings.
                  </p>
             )}
           </div>

@@ -20,13 +20,6 @@ const App: React.FC = () => {
   // Initialize Supabase
   const { error: supabaseError } = useSupabase();
   
-  // Initialize memory service
-  const { 
-    memoryService, 
-    error: memoryError, 
-    setUserId: setMemoryUserId 
-  } = useMemoryService(process.env.API_KEY);
-  
   // Initialize AI provider
   const {
     selectedProvider,
@@ -35,8 +28,20 @@ const App: React.FC = () => {
     handleApiKeyChange,
     geminiChat,
     error: aiError,
-    setError: setAiError
+    setError: setAiError,
+    // apiKeys // This is already destructured below, ensure we use the correct one
   } = useAIProvider(userId);
+
+  // Get Gemini API key for memory service
+  const geminiApiKeyForEmbeddings = apiKeys[AiProviderType.GEMINI];
+
+  // Initialize memory service
+  const {
+    memoryService,
+    error: memoryError,
+    setUserId: setMemoryUserId,
+    isUsingMockEmbeddings // Get the mock status
+  } = useMemoryService(geminiApiKeyForEmbeddings); // Pass the key
   
   // Initialize Google auth
   const {
@@ -127,6 +132,17 @@ const App: React.FC = () => {
             <span className="ml-auto text-sm text-gray-400">Provider: {selectedProvider}</span>
           </div>
 
+          {/* Notification for mock embeddings */}
+          {isUsingMockEmbeddings && (
+            <div
+              className="bg-yellow-500 text-black p-2 text-center text-sm fixed top-16 left-0 right-0 z-50 shadow-md"
+              role="alert"
+            >
+              Memory features are using mock embeddings due to a missing or invalid Gemini API key.
+              Please configure your Gemini API key in Settings for full functionality.
+            </div>
+          )}
+
           <Routes>
             <Route path="/" element={
               <ChatView
@@ -135,11 +151,15 @@ const App: React.FC = () => {
                 isLoading={chatLoading}
                 error={error}
                 currentProvider={selectedProvider}
+                apiKeys={apiKeys} // Pass apiKeys prop
               />
             } />
             <Route path="*" element={<Navigate to="/" />} />
           </Routes>
         </main>
+        {/* Add a conditional top margin to ChatView if the mock warning is shown, to prevent overlap */}
+        {/* This is a bit of a hack, ideally the layout would handle this more gracefully */}
+        {/* Or, adjust the Routes container's top padding */}
         
         <SettingsModal
           isOpen={isSettingsModalOpen}

@@ -7,12 +7,14 @@ import { Message, ChatRole } from '../types';
  */
 class ConversationMemoryService {
   private static instance: ConversationMemoryService;
+  private static currentApiKey?: string;
   private lanceDB: LanceDBService;
-  private embeddingService: EmbeddingService;
+  public embeddingService: EmbeddingService; // Made public to check type
   private userId: string | null = null;
   
   private constructor(apiKey?: string) {
     this.lanceDB = LanceDBService.getInstance();
+    // Crucially, pass the apiKey to EmbeddingService.getInstance
     this.embeddingService = EmbeddingService.getInstance(apiKey);
   }
 
@@ -20,8 +22,10 @@ class ConversationMemoryService {
    * Get the singleton instance of ConversationMemoryService
    */
   public static getInstance(apiKey?: string): ConversationMemoryService {
-    if (!ConversationMemoryService.instance) {
+    if (!ConversationMemoryService.instance || ConversationMemoryService.currentApiKey !== apiKey) {
+      console.log(`ConversationMemoryService: Re-initializing with API key status change. Old key: ${ConversationMemoryService.currentApiKey}, New key: ${apiKey}`);
       ConversationMemoryService.instance = new ConversationMemoryService(apiKey);
+      ConversationMemoryService.currentApiKey = apiKey;
     }
     return ConversationMemoryService.instance;
   }

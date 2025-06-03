@@ -81,14 +81,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     <input
                         id="apiKeyInput"
                         type="password"
-                        placeholder={selectedProvider === AiProviderType.GEMINI ? "Using environment key or enter here" : `Enter ${selectedProvider} API Key`}
+                        placeholder={`Enter ${selectedProvider} API Key`}
                         value={currentApiKey === "YOUR_GEMINI_API_KEY_HERE" && selectedProvider === AiProviderType.GEMINI ? "" : currentApiKey}
                         onChange={(e) => onApiKeyChange(selectedProvider, e.target.value)}
                         className="w-full p-3 pl-10 bg-gray-800/70 border border-purple-700/60 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none text-white placeholder-gray-500 transition-colors"
                     />
                 </div>
-                 {selectedProvider === AiProviderType.GEMINI && process.env.API_KEY && apiKeys[AiProviderType.GEMINI] === process.env.API_KEY && (
-                    <p className="text-xs text-gray-500 mt-1">Using API key from environment variables for Gemini.</p>
+                {/* Removed the confusing paragraph about environment variables */}
+                {currentApiKey === "YOUR_GEMINI_API_KEY_HERE" && selectedProvider === AiProviderType.GEMINI && (
+                    <p className="text-xs text-yellow-500 mt-1">
+                        <AlertTriangleIcon className="inline w-3 h-3 mr-1" />
+                        Gemini API key is a placeholder. Update it for full functionality.
+                    </p>
                 )}
                 {selectedProvider !== AiProviderType.GEMINI && (
                      <p className="text-xs text-yellow-400/80 mt-1">Note: Only Gemini is fully implemented in this version.</p>
