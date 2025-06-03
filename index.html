@@ -11,12 +11,12 @@
    -->
   <meta name="google-signin-client_id" content="849085900509-q9u3t9ep7msiuqij05pnh4mj3c8buu16.apps.googleusercontent.com">
   <style>
+      @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
     body {
       font-family: 'Inter', sans-serif;
       -webkit-font-smoothing: antialiased;
       -moz-osx-font-smoothing: grayscale;
     }
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
     .chroma-gradient-bg {
       background: radial-gradient(ellipse at center, rgba(58,16,103,0.8) 0%, rgba(0,0,0,1) 70%), 
                   linear-gradient(135deg, #1E003D 0%, #0F001F 100%);
@@ -71,7 +71,6 @@
   }
 }
 </script>
-<link rel="stylesheet" href="/index.css">
 </head>
 <body class="chroma-gradient-bg text-white">
   <div id="root"></div>
@@ -83,6 +82,6 @@
     // However, with esm.sh, it often handles worker loading well if the import map is correct.
     // We'll ensure the service initializes it if needed.
   </script>
-  <script type="module" src="/index.tsx"></script>
+    <script type="module" src="/src/index.tsx"></script>
 </body>
 </html>

@@ -1,29 +1,17 @@
 
-import React, { useState } from 'react';
-import { AiProviderType, GoogleUserProfile, Persona, Note } from '../types';
+import React, { useState, useContext } from 'react'; // Added useContext
+import { AiProviderType, GoogleUserProfile, Persona, Note, ChatRole } from '../types'; // Added ChatRole
 import { SettingsIcon, GoogleIcon, ChevronDownIcon, ChevronUpIcon, KeyIcon, CalendarIcon, TasksIcon, GeminiLogoIcon, OpenAILogoIcon, GroqLogoIcon, HFLogoIcon, OpenRouterLogoIcon, UserCircleIcon, AlertTriangleIcon, BrainIcon, ClipboardDocumentListIcon, TrashIcon } from './icons/ChromaIcons';
 
-interface SidebarProps {
-  selectedProvider: AiProviderType;
-  onSelectProvider: (provider: AiProviderType) => void;
-  apiKeys: Record<AiProviderType, string>;
-  onApiKeyChange: (provider: AiProviderType, key: string) => void;
-  isGoogleLoggedIn: boolean;
-  googleUserProfile: GoogleUserProfile | null;
-  onGoogleLogin: () => void;
-  onGoogleLogout: () => void;
-  isGoogleClientConfigured: boolean;
-  personas: Persona[];
-  selectedPersonaName: string;
-  onSelectPersona: (name: string) => void;
-  customSystemPrompt: string;
-  onCustomSystemPromptChange: (prompt: string) => void;
-  isGeminiKeyFromEnv: boolean;
-  isGeminiKeyPlaceholder: boolean;
-  localNotes: Note[];
-  onManualAddNote: (content: string) => void;
-  onManualDeleteNote: (id: string) => void;
-}
+// Import Contexts
+import { AuthContext } from '../contexts/AuthContext';
+import { SettingsContext } from '../contexts/SettingsContext';
+import { RAGContext } from '../contexts/RAGContext';
+import { ChatContext } from '../contexts/ChatContext';
+
+// Define constants if not imported (these were originally in App.tsx)
+const YOUR_GEMINI_API_KEY_PLACEHOLDER = "YOUR_GEMINI_API_KEY_HERE";
+const GEMINI_API_KEY_FROM_ENV = process.env.API_KEY; // Vite handles env vars
 
 const providerIcons: Record<AiProviderType, React.FC<{className?: string}>> = {
     [AiProviderType.GEMINI]: GeminiLogoIcon,
@@ -33,38 +21,56 @@ const providerIcons: Record<AiProviderType, React.FC<{className?: string}>> = {
     [AiProviderType.OPENROUTER]: OpenRouterLogoIcon,
 };
 
+export const Sidebar: React.FC = () => {
+  // Consume contexts
+  const authCtx = useContext(AuthContext);
+  const settingsCtx = useContext(SettingsContext);
+  const ragCtx = useContext(RAGContext);
+  const chatCtx = useContext(ChatContext);
 
-export const Sidebar: React.FC<SidebarProps> = ({
-  selectedProvider,
-  onSelectProvider,
-  apiKeys,
-  onApiKeyChange,
-  isGoogleLoggedIn,
-  googleUserProfile,
-  onGoogleLogin,
-  onGoogleLogout,
-  isGoogleClientConfigured,
-  personas,
-  selectedPersonaName,
-  onSelectPersona,
-  customSystemPrompt,
-  onCustomSystemPromptChange,
-  isGeminiKeyFromEnv,
-  isGeminiKeyPlaceholder,
-  localNotes,
-  onManualAddNote,
-  onManualDeleteNote,
-}) => {
+  // State for UI toggles remains local to Sidebar
   const [showApiKeys, setShowApiKeys] = useState(false);
   const [showGoogleIntegrations, setShowGoogleIntegrations] = useState(true);
   const [showPersonaSettings, setShowPersonaSettings] = useState(true);
   const [showLocalNotes, setShowLocalNotes] = useState(false);
   const [manualNoteInput, setManualNoteInput] = useState('');
 
+  if (!authCtx || !settingsCtx || !ragCtx || !chatCtx) {
+    return <aside className="w-72 bg-black/50 backdrop-blur-md p-5 border-r border-purple-900/30 flex flex-col space-y-6 scrollbar-thin overflow-y-auto">Loading sidebar contexts...</aside>;
+  }
+
+  // Destructure values from contexts
+  const {
+    isGoogleLoggedIn, googleUserProfile, handleGoogleLogin, handleGoogleLogout,
+    isLoading: authLoading, error: authError, isGoogleClientConfigured
+  } = authCtx;
+  const {
+    selectedProvider, setSelectedProvider, apiKeys, handleApiKeyChange,
+    personas, selectedPersonaName, handleSelectPersona,
+    customSystemPrompt, handleCustomSystemPromptChange
+  } = settingsCtx;
+  const {
+    localNotes, handleManualAddNote, handleManualDeleteNote,
+    isProcessingNote, ragError
+  } = ragCtx;
+  const { error: chatError, setMessages: setChatMessages } = chatCtx;
+
+  const isGeminiKeyFromEnv = !!GEMINI_API_KEY_FROM_ENV && apiKeys[AiProviderType.GEMINI] === GEMINI_API_KEY_FROM_ENV;
+  const isGeminiKeyPlaceholder = apiKeys[AiProviderType.GEMINI] === YOUR_GEMINI_API_KEY_PLACEHOLDER;
+
+  const addMessageToChatForRAG = (msg: { text: string, role: 'system' | 'error' }) => {
+    setChatMessages(prev => [...prev, {
+      id: Date.now().toString(),
+      text: msg.text,
+      sender: msg.role === 'system' ? ChatRole.SYSTEM : ChatRole.SYSTEM, // Or a specific "ERROR" role if defined
+      timestamp: new Date(),
+      role: msg.role // Store the role for potential styling
+    }]);
+  };
 
   const handleAddManualNoteClick = () => {
     if (manualNoteInput.trim()) {
-      onManualAddNote(manualNoteInput.trim());
+      handleManualAddNote(manualNoteInput.trim(), addMessageToChatForRAG);
       setManualNoteInput('');
     }
   };
@@ -74,6 +80,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
     ? (isGeminiKeyFromEnv ? "Using key from environment" : "Enter Gemini API Key") 
     : `Enter ${selectedProvider} API Key`;
 
+  // Consolidate API related errors for display
+  let apiKeyError: string | null = null;
+  if (selectedProvider === AiProviderType.GEMINI && (chatError?.includes("API Key") || ragError?.includes("API Key"))) {
+    apiKeyError = chatError || ragError;
+  }
+
+
   return (
     <aside className="w-72 bg-black/50 backdrop-blur-md p-5 border-r border-purple-900/30 flex flex-col space-y-6 scrollbar-thin overflow-y-auto">
       <div>
@@ -81,7 +94,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <div className="relative">
           <select
             value={selectedProvider}
-            onChange={(e) => onSelectProvider(e.target.value as AiProviderType)}
+            onChange={(e) => setSelectedProvider(e.target.value as AiProviderType)}
             className="w-full p-3 bg-gray-800/70 border border-purple-700/60 rounded-lg appearance-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none text-white placeholder-gray-400 transition-colors"
             aria-label="Select AI Provider"
           >
@@ -117,16 +130,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         type="password"
                         placeholder={placeholderForApiKeyInput}
                         value={selectedProvider === AiProviderType.GEMINI && isGeminiKeyPlaceholder ? "" : currentApiKey}
-                        onChange={(e) => onApiKeyChange(selectedProvider, e.target.value)}
+                        onChange={(e) => handleApiKeyChange(selectedProvider, e.target.value)}
                         className="w-full p-3 pl-10 bg-gray-800/70 border border-purple-700/60 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none text-white placeholder-gray-500 transition-colors"
                         aria-label={`API Key for ${selectedProvider}`}
                         disabled={selectedProvider === AiProviderType.GEMINI && isGeminiKeyFromEnv}
                     />
                 </div>
+                {apiKeyError && (
+                    <p className="text-xs text-red-400/90 mt-1 flex items-center">
+                        <AlertTriangleIcon className="inline w-4 h-4 mr-1 flex-shrink-0" />
+                        {apiKeyError}
+                    </p>
+                )}
                  {selectedProvider === AiProviderType.GEMINI && isGeminiKeyFromEnv && (
                     <p className="text-xs text-gray-500 mt-1">Using API key from environment variables for Gemini.</p>
                 )}
-                 {selectedProvider === AiProviderType.GEMINI && isGeminiKeyPlaceholder && !isGeminiKeyFromEnv && (
+                 {selectedProvider === AiProviderType.GEMINI && isGeminiKeyPlaceholder && !isGeminiKeyFromEnv && !apiKeyError && (
                     <p className="text-xs text-yellow-400/80 mt-1">
                         <AlertTriangleIcon className="inline w-3 h-3 mr-1" />
                         Gemini API Key is a placeholder. Please enter your key.
@@ -156,7 +175,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         <select
                             id="personaSelector"
                             value={selectedPersonaName}
-                            onChange={(e) => onSelectPersona(e.target.value)}
+                            onChange={(e) => handleSelectPersona(e.target.value)}
                             className="w-full p-3 bg-gray-800/70 border border-purple-700/60 rounded-lg appearance-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none text-white placeholder-gray-400 transition-colors"
                             aria-label="Select AI Persona"
                         >
@@ -175,7 +194,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         <textarea
                             id="customPromptInput"
                             value={customSystemPrompt}
-                            onChange={(e) => onCustomSystemPromptChange(e.target.value)}
+                            onChange={(e) => handleCustomSystemPromptChange(e.target.value)}
                             placeholder="Enter your custom system prompt for the AI..."
                             rows={4}
                             className="w-full p-3 bg-gray-800/70 border border-purple-700/60 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none text-white placeholder-gray-500 transition-colors scrollbar-thin text-sm"
@@ -198,42 +217,48 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </button>
         {showGoogleIntegrations && (
             <div className="space-y-3">
+           {authError && (
+             <div className="p-3 bg-red-800/30 border border-red-700 text-red-200 rounded-lg text-sm flex items-center">
+               <AlertTriangleIcon className="w-5 h-5 mr-2 flex-shrink-0" />
+               <span>{authError}</span>
+             </div>
+           )}
             {!isGoogleClientConfigured && (
                 <div className="p-3 bg-yellow-800/30 border border-yellow-700 text-yellow-200 rounded-lg text-sm">
                     <AlertTriangleIcon className="inline w-5 h-5 mr-2" />
                     Google Client ID not configured. Google integrations are disabled.
-                </div>
-            )}
-            {isGoogleLoggedIn && googleUserProfile && (
-                <div className="p-3 rounded-lg glassmorphism border-green-500/50 border flex items-center space-x-3">
-                    {googleUserProfile.picture ? (
-                        <img src={googleUserProfile.picture} alt="User" className="w-10 h-10 rounded-full" />
-                    ) : (
-                        <UserCircleIcon className="w-10 h-10 text-gray-400" />
-                    )}
-                    <div>
-                        <p className="text-sm font-medium text-gray-100">{googleUserProfile.name}</p>
-                        <p className="text-xs text-gray-400">{googleUserProfile.email}</p>
-                    </div>
-                </div>
-            )}
-            <button
-                onClick={isGoogleLoggedIn ? onGoogleLogout : onGoogleLogin}
-                disabled={!isGoogleClientConfigured}
+                 </div>
+             )}
+             {isGoogleLoggedIn && googleUserProfile && (
+                 <div className="p-3 rounded-lg glassmorphism border-green-500/50 border flex items-center space-x-3">
+                     {googleUserProfile.picture ? (
+                         <img src={googleUserProfile.picture} alt="User" className="w-10 h-10 rounded-full" />
+                     ) : (
+                         <UserCircleIcon className="w-10 h-10 text-gray-400" />
+                     )}
+                     <div>
+                         <p className="text-sm font-medium text-gray-100">{googleUserProfile.name}</p>
+                         <p className="text-xs text-gray-400">{googleUserProfile.email}</p>
+                     </div>
+                 </div>
+             )}
+             <button
+                onClick={isGoogleLoggedIn ? handleGoogleLogout : handleGoogleLogin}
+                disabled={!isGoogleClientConfigured || authLoading}
                 className={`w-full flex items-center justify-center p-3 rounded-lg text-sm font-medium transition-all duration-200 ease-in-out transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900
                 ${isGoogleLoggedIn 
                     ? 'bg-red-600 hover:bg-red-700 text-white focus:ring-red-500' 
                     : 'bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white focus:ring-blue-500'}
-                ${!isGoogleClientConfigured ? 'opacity-50 cursor-not-allowed' : ''}`}
+                ${(!isGoogleClientConfigured || authLoading) ? 'opacity-50 cursor-not-allowed' : ''}`}
                 aria-label={isGoogleLoggedIn ? 'Disconnect Google Account' : 'Connect Google Account'}
             >
                 <GoogleIcon className="w-5 h-5 mr-2" />
-                {isGoogleLoggedIn ? 'Disconnect Google' : 'Connect Google Account'}
+                {authLoading ? (isGoogleLoggedIn ? 'Disconnecting...' : 'Connecting...') : (isGoogleLoggedIn ? 'Disconnect Google' : 'Connect Google Account')}
             </button>
             <div className={`p-3 rounded-lg glassmorphism ${isGoogleLoggedIn ? 'border-green-500/50' : 'border-gray-700/50'} border`}>
                 <div className="flex items-center text-sm">
-                <CalendarIcon className={`w-5 h-5 mr-2 ${isGoogleLoggedIn ? 'text-green-400' : 'text-gray-500'}`} />
-                <span className={`${isGoogleLoggedIn ? 'text-gray-200' : 'text-gray-500'}`}>Google Calendar</span>
+                 <CalendarIcon className={`w-5 h-5 mr-2 ${isGoogleLoggedIn ? 'text-green-400' : 'text-gray-500'}`} />
+                 <span className={`${isGoogleLoggedIn ? 'text-gray-200' : 'text-gray-500'}`}>Google Calendar</span>
                 <span className={`ml-auto text-xs px-2 py-0.5 rounded-full ${isGoogleLoggedIn ? 'bg-green-500/30 text-green-300' : 'bg-gray-600/50 text-gray-400'}`}>
                     {isGoogleLoggedIn ? 'Active' : 'Disabled'}
                 </span>
@@ -278,12 +303,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 className="w-full p-2 bg-gray-800/70 border border-purple-700/60 rounded-lg focus:ring-1 focus:ring-purple-500 focus:border-purple-500 outline-none text-white placeholder-gray-500 transition-colors scrollbar-thin text-sm"
                 aria-label="New Note Input"
               />
+              {ragError && ragError.includes("note") && (
+                <p className="text-xs text-red-400/90 mt-1">{ragError}</p>
+              )}
               <button
                 onClick={handleAddManualNoteClick}
                 className="mt-2 w-full p-2 bg-purple-600 hover:bg-purple-700 text-white text-sm rounded-md transition-colors disabled:opacity-50"
-                disabled={!manualNoteInput.trim()}
+                disabled={!manualNoteInput.trim() || isProcessingNote}
               >
-                Add Note
+                {isProcessingNote && !manualNoteInput.includes(localNotes[0]?.content || 'impossible_match')
+                  ? 'Adding Note...'
+                  : 'Add Note'
+                }
               </button>
             </div>
             {localNotes.length > 0 ? (
@@ -293,11 +324,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     <p className="whitespace-pre-wrap break-words">{note.content}</p>
                     <p className="text-xs text-gray-500 mt-1">{new Date(note.createdAt).toLocaleDateString()}</p>
                     <button
-                      onClick={() => onManualDeleteNote(note.id)}
-                      className="absolute top-1 right-1 p-1 text-gray-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                      onClick={() => handleManualDeleteNote(note.id, addMessageToChatForRAG)}
+                      disabled={isProcessingNote}
+                      className="absolute top-1 right-1 p-1 text-gray-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-50"
                       aria-label="Delete note"
                     >
-                      <TrashIcon className="w-4 h-4" />
+                       {isProcessingNote && localNotes.find(n => n.id === note.id) // Basic check if this note is being processed
+                        ? <div className="w-3 h-3 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"></div>
+                        : <TrashIcon className="w-4 h-4" />}
                     </button>
                   </div>
                 ))}
