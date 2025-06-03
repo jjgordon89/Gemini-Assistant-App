@@ -1,10 +1,8 @@
-
 import React, { useRef, useEffect } from 'react';
 import { Message, ChatRole, AiProviderType } from '../types';
 import { ChatInput } from './ChatInput';
 import { MessageBubble } from './MessageBubble';
 import { ChromaSphereIcon, AlertTriangleIcon } from './icons/ChromaIcons';
-
 
 interface ChatViewProps {
   messages: Message[];
@@ -54,4 +52,3 @@ export const ChatView: React.FC<ChatViewProps> = ({ messages, onSendMessage, isL
     </div>
   );
 };
-    

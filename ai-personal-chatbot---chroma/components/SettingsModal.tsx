@@ -1,16 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { AiProviderType, GoogleUserProfile } from '../types';
+import { AiProviderType } from '../types';
 import { UserSettingsService, SettingName } from '../services';
 import { AlertTriangleIcon } from './icons/ChromaIcons';
+import { useSettings } from '../contexts';
 
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
   userId: string | null;
   selectedProvider: AiProviderType;
-  onSelectProvider: (provider: AiProviderType) => void;
   apiKeys: Record<AiProviderType, string>;
-  onApiKeyChange: (provider: AiProviderType, key: string) => void;
   memoryEnabled: boolean;
   onToggleMemory: (enabled: boolean) => void;
 }
@@ -20,80 +19,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onClose,
   userId,
   selectedProvider,
-  onSelectProvider,
   apiKeys,
-  onApiKeyChange,
   memoryEnabled,
   onToggleMemory
 }) => {
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [theme, setTheme] = useState<string>('dark');
-  const [language, setLanguage] = useState<string>('en');
-  const [notificationsEnabled, setNotificationsEnabled] = useState<boolean>(false);
+  const { theme, setTheme, language, setLanguage, notificationsEnabled, setNotificationsEnabled } = useSettings();
   
   const userSettingsService = UserSettingsService.getInstance();
-
-  useEffect(() => {
-    // Load settings when the modal opens and user is logged in
-    if (isOpen && userId) {
-      loadSettings();
-    }
-  }, [isOpen, userId]);
-
-  const loadSettings = async () => {
-    if (!userId) {
-      setError('You must be logged in to manage settings');
-      setIsLoading(false);
-      return;
-    }
-
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      const settings = await userSettingsService.getSettings(userId);
-      
-      // Process settings
-      settings.forEach(setting => {
-        switch (setting.setting_name) {
-          case SettingName.THEME:
-            setTheme(setting.setting_value);
-            break;
-          case SettingName.LANGUAGE:
-            setLanguage(setting.setting_value);
-            break;
-          case SettingName.NOTIFICATION:
-            setNotificationsEnabled(setting.setting_value === 'true');
-            break;
-          case SettingName.API_KEYS:
-            try {
-              const storedApiKeys = JSON.parse(setting.setting_value);
-              // Update only keys that are in the parsed object
-              Object.keys(storedApiKeys).forEach(key => {
-                if (key in apiKeys) {
-                  onApiKeyChange(key as AiProviderType, storedApiKeys[key]);
-                }
-              });
-            } catch (e) {
-              console.error('Error parsing API keys from settings:', e);
-            }
-            break;
-          case SettingName.API_PROVIDER:
-            onSelectProvider(setting.setting_value as AiProviderType);
-            break;
-          case SettingName.MEMORY_ENABLED:
-            onToggleMemory(setting.setting_value === 'true');
-            break;
-        }
-      });
-    } catch (err) {
-      console.error('Error loading settings:', err);
-      setError('Failed to load settings. Please try again.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   const saveSettings = async () => {
     if (!userId) {

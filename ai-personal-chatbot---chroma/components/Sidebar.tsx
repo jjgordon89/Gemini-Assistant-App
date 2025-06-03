@@ -1,10 +1,9 @@
 import React, { useState } from 'react';
 import { AiProviderType, GoogleUserProfile } from '../types';
-import { SettingsIcon, GoogleIcon, ChevronDownIcon, ChevronUpIcon, KeyIcon, CalendarIcon, TasksIcon, GeminiLogoIcon, OpenAILogoIcon, GroqLogoIcon, HFLogoIcon, OpenRouterLogoIcon, UserCircleIcon, AlertTriangleIcon } from './icons/ChromaIcons'; // Assuming UserCircleIcon
+import { SettingsIcon, GoogleIcon, ChevronDownIcon, ChevronUpIcon, KeyIcon, CalendarIcon, TasksIcon, GeminiLogoIcon, OpenAILogoIcon, GroqLogoIcon, HFLogoIcon, OpenRouterLogoIcon, UserCircleIcon, AlertTriangleIcon } from './icons/ChromaIcons';
 
 interface SidebarProps {
   selectedProvider: AiProviderType;
-  onSelectProvider: (provider: AiProviderType) => void;
   apiKeys: Record<AiProviderType, string>;
   onApiKeyChange: (provider: AiProviderType, key: string) => void;
   isGoogleLoggedIn: boolean;
@@ -25,10 +24,8 @@ const providerIcons: Record<AiProviderType, React.FC<{className?: string}>> = {
     [AiProviderType.OPENROUTER]: OpenRouterLogoIcon,
 };
 
-
 export const Sidebar: React.FC<SidebarProps> = ({
   selectedProvider,
-  onSelectProvider,
   apiKeys,
   onApiKeyChange,
   isGoogleLoggedIn,
@@ -53,7 +50,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <div className="relative">
           <select
             value={selectedProvider}
-            onChange={(e) => onSelectProvider(e.target.value as AiProviderType)}
             className="w-full p-3 bg-gray-800/70 border border-purple-700/60 rounded-lg appearance-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none text-white placeholder-gray-400 transition-colors"
           >
             {Object.values(AiProviderType).map((provider) => (
@@ -220,7 +216,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <SettingsIcon className="w-5 h-5" />
             <span className="text-sm">Settings</span>
         </div>
-        <p className="text-xs text-gray-600 mt-4">Chroma AI v0.3.0</p> {/* Version Bump */}
+        <p className="text-xs text-gray-600 mt-4">Chroma AI v0.3.0</p>
       </div>
     </aside>
   );
