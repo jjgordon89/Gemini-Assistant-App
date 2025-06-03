@@ -16,7 +16,8 @@
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
     "uuid": "^9.0.1",
-    "lancedb": "^0.4.5"
+    "lancedb": "^0.4.5",
+    "@supabase/supabase-js": "^2.38.4"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",

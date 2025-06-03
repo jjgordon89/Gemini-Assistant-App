@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { ChatView } from './components/ChatView';
 import { Sidebar } from './components/Sidebar';
+import { SettingsModal } from './components/SettingsModal';
 import { AiProviderType, Message, ChatRole, GoogleUserProfile } from './types';
 import { GoogleGenAI, Chat } from "@google/genai"; 
 
@@ -13,6 +14,7 @@ import * as GoogleAuthService from './services/googleAuthService';
 // Import memory services
 import ConversationMemoryService from './services/conversationMemoryService';
 import EmbeddingService from './services/embeddingService';
+import { UserSettingsService, SettingName, SupabaseService } from './services';
 
 // Mock API key for Gemini (should be in process.env.API_KEY in a real build environment)
 const GEMINI_API_KEY = process.env.API_KEY || "AIzaSyD7nVDOiec5dS1ie9zMQp_plrDCcNeKJPw"; 
@@ -39,6 +41,10 @@ const App: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [geminiChat, setGeminiChat] = useState<Chat | null>(null);
   const [memoryService, setMemoryService] = useState<ConversationMemoryService | null>(null);
+  const [memoryEnabled, setMemoryEnabled] = useState<boolean>(true);
+  
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [userSettingsLoaded, setUserSettingsLoaded] = useState(false);
 
   const handleGoogleTokenResponse = useCallback(async (tokenResponse: google.accounts.oauth2.TokenResponse) => {
     setGoogleAccessToken(tokenResponse.access_token);
@@ -51,6 +57,54 @@ const App: React.FC = () => {
       // Set user ID in memory service when user logs in
       if (memoryService && profile.email) {
         memoryService.setUserId(profile.email);
+      }
+      
+      // Load user settings from Supabase
+      if (profile.email) {
+        try {
+          const userSettingsService = UserSettingsService.getInstance();
+          const settings = await userSettingsService.getSettings(profile.email);
+          
+          // Process settings
+          let newApiKeys = {...apiKeys};
+          let newProvider = selectedProvider;
+          let newMemoryEnabled = memoryEnabled;
+          
+          settings.forEach(setting => {
+            switch (setting.setting_name) {
+              case SettingName.API_KEYS:
+                try {
+                  const storedApiKeys = JSON.parse(setting.setting_value);
+                  // Update only keys that are in the parsed object
+                  Object.keys(storedApiKeys).forEach(key => {
+                    if (key in apiKeys) {
+                      newApiKeys[key as AiProviderType] = storedApiKeys[key];
+                    }
+                  });
+                } catch (e) {
+                  console.error('Error parsing API keys from settings:', e);
+                }
+                break;
+              case SettingName.API_PROVIDER:
+                newProvider = setting.setting_value as AiProviderType;
+                break;
+              case SettingName.MEMORY_ENABLED:
+                newMemoryEnabled = setting.setting_value === 'true';
+                break;
+            }
+          });
+          
+          // Apply settings
+          setApiKeys(newApiKeys);
+          setSelectedProvider(newProvider);
+          setMemoryEnabled(newMemoryEnabled);
+          setUserSettingsLoaded(true);
+          
+          console.log('User settings loaded from Supabase');
+        } catch (err) {
+          console.error('Error loading user settings from Supabase:', err);
+          // Continue with default settings
+        }
       }
       
       // Example: Fetch calendar events after login
@@ -69,7 +123,7 @@ const App: React.FC = () => {
       setError("Failed to fetch Google user profile. See console for details.");
       // Keep logged in state, but profile might be missing
     }
-  }, [memoryService]);
+  }, [memoryService, apiKeys, selectedProvider, memoryEnabled]);
 
   const handleGoogleError = useCallback((errorResponse: any) => { // Changed error to errorResponse to avoid conflict
     console.error("Google Sign-In Error:", errorResponse);
@@ -83,6 +137,18 @@ const App: React.FC = () => {
       memoryService.setUserId(null);
     }
   }, [memoryService]);
+
+  // Initialize Supabase
+  useEffect(() => {
+    try {
+      const supabaseService = SupabaseService.getInstance();
+      supabaseService.initialize();
+      console.log('Supabase initialized');
+    } catch (err) {
+      console.error('Failed to initialize Supabase:', err);
+      setError('Failed to initialize Supabase. Some features may be unavailable.');
+    }
+  }, []);
 
   // Initialize memory service
   useEffect(() => {
@@ -167,7 +233,7 @@ const App: React.FC = () => {
 
     try {
       // Store user message in memory
-      if (memoryService) {
+      if (memoryService && memoryEnabled) {
         await memoryService.storeMessage(newUserMessage)
           .catch(err => console.error("Failed to store message in memory:", err));
       }
@@ -182,7 +248,7 @@ const App: React.FC = () => {
 
         // Get memory context if available
         let memoryContext = "";
-        if (memoryService) {
+        if (memoryService && memoryEnabled) {
           try {
             memoryContext = await memoryService.generateContextualMemory(text, 3, 0.7);
             console.log("Memory context:", memoryContext);
@@ -217,7 +283,7 @@ const App: React.FC = () => {
         ));
         
         // Store AI response in memory
-        if (memoryService) {
+        if (memoryService && memoryEnabled) {
           await memoryService.storeMessage(aiResponseMessage)
             .catch(err => console.error("Failed to store AI response in memory:", err));
         }
@@ -234,7 +300,7 @@ const App: React.FC = () => {
         setMessages(prevMessages => [...prevMessages, aiResponse]);
         
         // Store AI response in memory
-        if (memoryService) {
+        if (memoryService && memoryEnabled) {
           await memoryService.storeMessage(aiResponse)
             .catch(err => console.error("Failed to store AI response in memory:", err));
         }
@@ -290,6 +356,64 @@ const App: React.FC = () => {
     }
   };
 
+  const handleToggleMemory = async (enabled: boolean) => {
+    setMemoryEnabled(enabled);
+    
+    // Save setting to Supabase if user is logged in
+    if (googleUserProfile?.email) {
+      try {
+        const userSettingsService = UserSettingsService.getInstance();
+        await userSettingsService.updateSetting(
+          googleUserProfile.email,
+          SettingName.MEMORY_ENABLED,
+          String(enabled)
+        );
+      } catch (err) {
+        console.error('Failed to save memory setting:', err);
+        // Continue with the setting change in memory only
+      }
+    }
+  };
+
+  const saveUserSettings = async () => {
+    if (!googleUserProfile?.email) return;
+    
+    try {
+      const userSettingsService = UserSettingsService.getInstance();
+      
+      // Save API provider and keys
+      await userSettingsService.updateSetting(
+        googleUserProfile.email,
+        SettingName.API_PROVIDER,
+        selectedProvider
+      );
+      
+      await userSettingsService.updateSetting(
+        googleUserProfile.email,
+        SettingName.API_KEYS,
+        JSON.stringify(apiKeys)
+      );
+      
+      await userSettingsService.updateSetting(
+        googleUserProfile.email,
+        SettingName.MEMORY_ENABLED,
+        String(memoryEnabled)
+      );
+      
+      console.log('User settings saved to Supabase');
+    } catch (err) {
+      console.error('Failed to save user settings to Supabase:', err);
+      setError('Failed to save settings. Changes may not persist between sessions.');
+    }
+  };
+
+  // Save settings to Supabase when they change and user is logged in
+  useEffect(() => {
+    if (googleUserProfile?.email && userSettingsLoaded) {
+      saveUserSettings();
+    }
+  }, [selectedProvider, apiKeys, memoryEnabled, userSettingsLoaded]);
+
   return (
     <HashRouter>
       <div className="flex h-screen overflow-hidden antialiased">
@@ -304,7 +428,8 @@ const App: React.FC = () => {
           onGoogleLogout={handleGoogleLogout}
           isGoogleClientConfigured={GOOGLE_CLIENT_ID !== "YOUR_GOOGLE_CLIENT_ID"}
           onClearMemory={handleClearMemory}
-          memoryEnabled={!!memoryService}
+          memoryEnabled={memoryEnabled}
+          onOpenSettings={() => setIsSettingsModalOpen(true)}
         />
         <main className="flex-1 flex flex-col h-full chroma-gradient-bg relative">
           <div className="absolute top-0 left-0 right-0 h-16 bg-black/30 backdrop-blur-sm flex items-center px-6 z-10">
@@ -325,6 +450,18 @@ const App: React.FC = () => {
             <Route path="*" element={<Navigate to="/" />} />
           </Routes>
         </main>
+        
+        <SettingsModal
+          isOpen={isSettingsModalOpen}
+          onClose={() => setIsSettingsModalOpen(false)}
+          userId={googleUserProfile?.email || null}
+          selectedProvider={selectedProvider}
+          onSelectProvider={setSelectedProvider}
+          apiKeys={apiKeys}
+          onApiKeyChange={handleApiKeyChange}
+          memoryEnabled={memoryEnabled}
+          onToggleMemory={handleToggleMemory}
+        />
       </div>
     </HashRouter>
   );

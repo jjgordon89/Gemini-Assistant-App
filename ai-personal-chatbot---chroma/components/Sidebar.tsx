@@ -14,6 +14,7 @@ interface SidebarProps {
   isGoogleClientConfigured: boolean;
   onClearMemory?: () => void;
   memoryEnabled: boolean;
+  onOpenSettings?: () => void;
 }
 
 const providerIcons: Record<AiProviderType, React.FC<{className?: string}>> = {
@@ -36,7 +37,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onGoogleLogout,
   isGoogleClientConfigured,
   onClearMemory,
-  memoryEnabled
+  memoryEnabled,
+  onOpenSettings
 }) => {
   const [showApiKeys, setShowApiKeys] = useState(false);
   const [showGoogleIntegrations, setShowGoogleIntegrations] = useState(true);
@@ -211,7 +213,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
       </div>
 
       <div className="mt-auto pt-6 border-t border-purple-900/30">
-        <div className="flex items-center space-x-2 text-gray-500 hover:text-purple-400 transition-colors cursor-pointer">
+        <div 
+          onClick={onOpenSettings}
+          className="flex items-center space-x-2 text-gray-500 hover:text-purple-400 transition-colors cursor-pointer"
+        >
             <SettingsIcon className="w-5 h-5" />
             <span className="text-sm">Settings</span>
         </div>
@@ -220,3 +225,5 @@ export const Sidebar: React.FC<SidebarProps> = ({
     </aside>
   );
 };
+
+export default Sidebar;
