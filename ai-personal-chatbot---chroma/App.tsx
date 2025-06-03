@@ -45,6 +45,7 @@ const App: React.FC = () => {
   
   // Initialize Google auth
   const {
+    googleAccessToken, // Destructure googleAccessToken
     googleUserProfile,
     isGoogleLoggedIn,
     error: authError,
@@ -87,7 +88,13 @@ const App: React.FC = () => {
     error: chatError,
     setError: setChatError,
     sendMessage
-  } = useChatMessages(geminiChat, selectedProvider, memoryService, memoryEnabled);
+  } = useChatMessages(
+    geminiChat,
+    selectedProvider,
+    memoryService,
+    memoryEnabled,
+    googleAccessToken // Pass googleAccessToken
+  );
   
   // Settings modal state
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
