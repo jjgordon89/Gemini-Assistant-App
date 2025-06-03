@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { AiProviderType, GoogleUserProfile } from '../types';
 import { SettingsIcon, GoogleIcon, ChevronDownIcon, ChevronUpIcon, KeyIcon, CalendarIcon, TasksIcon, GeminiLogoIcon, OpenAILogoIcon, GroqLogoIcon, HFLogoIcon, OpenRouterLogoIcon, UserCircleIcon, AlertTriangleIcon } from './icons/ChromaIcons'; // Assuming UserCircleIcon
@@ -13,6 +12,8 @@ interface SidebarProps {
   onGoogleLogin: () => void;
   onGoogleLogout: () => void;
   isGoogleClientConfigured: boolean;
+  onClearMemory?: () => void;
+  memoryEnabled: boolean;
 }
 
 const providerIcons: Record<AiProviderType, React.FC<{className?: string}>> = {
@@ -34,9 +35,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onGoogleLogin,
   onGoogleLogout,
   isGoogleClientConfigured,
+  onClearMemory,
+  memoryEnabled
 }) => {
   const [showApiKeys, setShowApiKeys] = useState(false);
   const [showGoogleIntegrations, setShowGoogleIntegrations] = useState(true);
+  const [showMemory, setShowMemory] = useState(true);
 
   const currentApiKey = apiKeys[selectedProvider];
 
@@ -164,12 +168,54 @@ export const Sidebar: React.FC<SidebarProps> = ({
         )}
       </div>
 
+      {/* Memory Section */}
+      <div className="border-t border-purple-900/30 pt-6">
+        <button
+            onClick={() => setShowMemory(!showMemory)}
+            className="flex items-center justify-between w-full text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3 hover:text-purple-400 transition-colors"
+        >
+            Conversation Memory
+            {showMemory ? <ChevronUpIcon className="w-4 h-4" /> : <ChevronDownIcon className="w-4 h-4" />}
+        </button>
+        {showMemory && (
+            <div className="space-y-3">
+                <div className={`p-3 rounded-lg glassmorphism ${memoryEnabled ? 'border-purple-500/50' : 'border-gray-700/50'} border`}>
+                    <div className="flex items-center text-sm">
+                        <span className={`${memoryEnabled ? 'text-gray-200' : 'text-gray-500'}`}>AI Memory System</span>
+                        <span className={`ml-auto text-xs px-2 py-0.5 rounded-full ${memoryEnabled ? 'bg-purple-500/30 text-purple-300' : 'bg-gray-600/50 text-gray-400'}`}>
+                            {memoryEnabled ? 'Active' : 'Disabled'}
+                        </span>
+                    </div>
+                    <p className="text-xs text-gray-400 mt-2">
+                        Enables the AI to remember past conversations and provide contextually relevant responses.
+                    </p>
+                </div>
+                
+                {isGoogleLoggedIn && memoryEnabled && onClearMemory && (
+                    <button
+                        onClick={onClearMemory}
+                        className="w-full p-2 bg-red-900/30 border border-red-700/60 rounded-lg text-sm text-red-200 hover:bg-red-900/50 transition-colors"
+                    >
+                        Clear My Conversation Memory
+                    </button>
+                )}
+                
+                {!isGoogleLoggedIn && memoryEnabled && (
+                    <p className="text-xs text-yellow-400">
+                        <AlertTriangleIcon className="inline w-4 h-4 mr-1" />
+                        Sign in with Google to enable personalized memory.
+                    </p>
+                )}
+            </div>
+        )}
+      </div>
+
       <div className="mt-auto pt-6 border-t border-purple-900/30">
         <div className="flex items-center space-x-2 text-gray-500 hover:text-purple-400 transition-colors cursor-pointer">
             <SettingsIcon className="w-5 h-5" />
             <span className="text-sm">Settings</span>
         </div>
-        <p className="text-xs text-gray-600 mt-4">Chroma AI v0.2.0</p> {/* Version Bump */}
+        <p className="text-xs text-gray-600 mt-4">Chroma AI v0.3.0</p> {/* Version Bump */}
       </div>
     </aside>
   );

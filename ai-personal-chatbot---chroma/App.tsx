@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { ChatView } from './components/ChatView';
@@ -11,6 +10,9 @@ import * as GoogleAuthService from './services/googleAuthService';
 // import * as GoogleCalendarService from './services/googleCalendarService';
 // import * as GoogleTasksService from './services/googleTasksService';
 
+// Import memory services
+import ConversationMemoryService from './services/conversationMemoryService';
+import EmbeddingService from './services/embeddingService';
 
 // Mock API key for Gemini (should be in process.env.API_KEY in a real build environment)
 const GEMINI_API_KEY = process.env.API_KEY || "AIzaSyD7nVDOiec5dS1ie9zMQp_plrDCcNeKJPw"; 
@@ -36,6 +38,7 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [geminiChat, setGeminiChat] = useState<Chat | null>(null);
+  const [memoryService, setMemoryService] = useState<ConversationMemoryService | null>(null);
 
   const handleGoogleTokenResponse = useCallback(async (tokenResponse: google.accounts.oauth2.TokenResponse) => {
     setGoogleAccessToken(tokenResponse.access_token);
@@ -44,6 +47,12 @@ const App: React.FC = () => {
     try {
       const profile = await GoogleAuthService.fetchUserProfile(tokenResponse.access_token);
       setGoogleUserProfile(profile);
+      
+      // Set user ID in memory service when user logs in
+      if (memoryService && profile.email) {
+        memoryService.setUserId(profile.email);
+      }
+      
       // Example: Fetch calendar events after login
       // if (tokenResponse.access_token) {
       //   const events = await GoogleCalendarService.getCalendarEvents(tokenResponse.access_token);
@@ -60,7 +69,7 @@ const App: React.FC = () => {
       setError("Failed to fetch Google user profile. See console for details.");
       // Keep logged in state, but profile might be missing
     }
-  }, []);
+  }, [memoryService]);
 
   const handleGoogleError = useCallback((errorResponse: any) => { // Changed error to errorResponse to avoid conflict
     console.error("Google Sign-In Error:", errorResponse);
@@ -68,7 +77,45 @@ const App: React.FC = () => {
     setIsGoogleLoggedIn(false);
     setGoogleAccessToken(null);
     setGoogleUserProfile(null);
-  }, []);
+    
+    // Clear user ID in memory service when user logs out
+    if (memoryService) {
+      memoryService.setUserId(null);
+    }
+  }, [memoryService]);
+
+  // Initialize memory service
+  useEffect(() => {
+    const initializeMemory = async () => {
+      try {
+        // Initialize memory service with Gemini API key for embeddings
+        const memory = ConversationMemoryService.getInstance(apiKeys[AiProviderType.GEMINI]);
+        await memory.initialize();
+        setMemoryService(memory);
+        
+        // Set user ID if already logged in
+        if (googleUserProfile?.email) {
+          memory.setUserId(googleUserProfile.email);
+        }
+        
+        console.log("Memory service initialized");
+      } catch (err) {
+        console.error("Failed to initialize memory service:", err);
+        setError("Failed to initialize memory service. Some features may be unavailable.");
+      }
+    };
+    
+    initializeMemory();
+    
+    // Cleanup on unmount
+    return () => {
+      if (memoryService) {
+        memoryService.close().catch(err => {
+          console.error("Error closing memory service:", err);
+        });
+      }
+    };
+  }, [apiKeys]);
 
   useEffect(() => {
     // Initialize Google Sign In
@@ -94,7 +141,7 @@ const App: React.FC = () => {
           model: 'gemini-2.5-flash-preview-04-17',
           config: {
             // System instruction updated to reflect potential (but not yet fully wired through AI) Google service interaction
-            systemInstruction: 'You are a helpful AI assistant. If asked about calendar or tasks, and the user is logged into Google, you can acknowledge that you *could* interact with their Google Calendar and Tasks. For now, provide helpful, general responses. For example, if asked to create an event, describe the event details you would create. If the user is not logged into Google, gently remind them they can connect their Google account for more features.',
+            systemInstruction: 'You are a helpful AI assistant with memory. You can recall past conversations when relevant. If asked about calendar or tasks, and the user is logged into Google, you can acknowledge that you *could* interact with their Google Calendar and Tasks. For now, provide helpful, general responses. For example, if asked to create an event, describe the event details you would create. If the user is not logged into Google, gently remind them they can connect their Google account for more features.',
           },
         });
         setGeminiChat(chatInstance);
@@ -119,6 +166,12 @@ const App: React.FC = () => {
     setError(null);
 
     try {
+      // Store user message in memory
+      if (memoryService) {
+        await memoryService.storeMessage(newUserMessage)
+          .catch(err => console.error("Failed to store message in memory:", err));
+      }
+      
       if (selectedProvider === AiProviderType.GEMINI) {
         if (!geminiChat) {
           throw new Error("Gemini chat is not initialized. Check API Key.");
@@ -127,16 +180,47 @@ const App: React.FC = () => {
         let accumulatedResponse = "";
         setMessages(prev => [...prev, { id: 'ai-typing', text: '', sender: ChatRole.MODEL, timestamp: new Date(), streaming: true }]);
 
-        const stream = await geminiChat.sendMessageStream({ message: text });
+        // Get memory context if available
+        let memoryContext = "";
+        if (memoryService) {
+          try {
+            memoryContext = await memoryService.generateContextualMemory(text, 3, 0.7);
+            console.log("Memory context:", memoryContext);
+          } catch (err) {
+            console.error("Failed to retrieve memory context:", err);
+          }
+        }
+
+        // Add memory context to the message if available
+        const messageWithContext = memoryContext ? 
+          { message: text, context: memoryContext } : 
+          { message: text };
+
+        const stream = await geminiChat.sendMessageStream(messageWithContext);
         for await (const chunk of stream) {
           accumulatedResponse += chunk.text;
           setMessages(prev => prev.map(msg => 
             msg.id === 'ai-typing' ? { ...msg, text: accumulatedResponse } : msg
           ));
         }
+        
+        const aiResponseMessage = {
+          id: Date.now().toString() + '-ai', 
+          streaming: false, 
+          text: accumulatedResponse, 
+          sender: ChatRole.MODEL,
+          timestamp: new Date()
+        };
+        
         setMessages(prev => prev.map(msg => 
-            msg.id === 'ai-typing' ? { ...msg, id: Date.now().toString() + '-ai', streaming: false, text: accumulatedResponse, timestamp: new Date() } : msg
+            msg.id === 'ai-typing' ? aiResponseMessage : msg
         ));
+        
+        // Store AI response in memory
+        if (memoryService) {
+          await memoryService.storeMessage(aiResponseMessage)
+            .catch(err => console.error("Failed to store AI response in memory:", err));
+        }
 
       } else {
         // Placeholder for other AI providers
@@ -148,6 +232,12 @@ const App: React.FC = () => {
           timestamp: new Date()
         };
         setMessages(prevMessages => [...prevMessages, aiResponse]);
+        
+        // Store AI response in memory
+        if (memoryService) {
+          await memoryService.storeMessage(aiResponse)
+            .catch(err => console.error("Failed to store AI response in memory:", err));
+        }
       }
     } catch (e) {
       console.error("Error sending message:", e);
@@ -175,10 +265,29 @@ const App: React.FC = () => {
     setGoogleUserProfile(null);
     setIsGoogleLoggedIn(false);
     setError(null); // Clear any previous Google-related errors
+    
+    // Clear user ID in memory service when user logs out
+    if (memoryService) {
+      memoryService.setUserId(null);
+    }
   };
   
   const handleApiKeyChange = (provider: AiProviderType, key: string) => {
     setApiKeys(prev => ({ ...prev, [provider]: key }));
+  };
+
+  const handleClearMemory = async () => {
+    if (memoryService && googleUserProfile?.email) {
+      try {
+        const deletedCount = await memoryService.clearUserMemory();
+        alert(`Cleared ${deletedCount} messages from memory.`);
+      } catch (err) {
+        console.error("Failed to clear memory:", err);
+        setError("Failed to clear memory. See console for details.");
+      }
+    } else {
+      setError("Cannot clear memory: either memory service is not initialized or user is not logged in.");
+    }
   };
 
   return (
@@ -194,6 +303,8 @@ const App: React.FC = () => {
           onGoogleLogin={handleGoogleLogin}
           onGoogleLogout={handleGoogleLogout}
           isGoogleClientConfigured={GOOGLE_CLIENT_ID !== "YOUR_GOOGLE_CLIENT_ID"}
+          onClearMemory={handleClearMemory}
+          memoryEnabled={!!memoryService}
         />
         <main className="flex-1 flex flex-col h-full chroma-gradient-bg relative">
           <div className="absolute top-0 left-0 right-0 h-16 bg-black/30 backdrop-blur-sm flex items-center px-6 z-10">
