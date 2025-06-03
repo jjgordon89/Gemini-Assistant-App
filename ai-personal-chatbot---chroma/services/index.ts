@@ -7,3 +7,6 @@ export { default as ConversationMemoryService } from './conversationMemoryServic
 export * as GoogleAuthService from './googleAuthService';
 export * as GoogleCalendarService from './googleCalendarService';
 export * as GoogleTasksService from './googleTasksService';
+export * as WeatherService from './weatherService';
+export * as NoteService from './noteService';
+export * as FileService from './fileService';

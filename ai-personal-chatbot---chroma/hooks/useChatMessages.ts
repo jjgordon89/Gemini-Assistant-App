@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Message, ChatRole, AiProviderType } from '../types';
-import { Chat } from '@google/genai';
-import { ConversationMemoryService } from '../services';
+import { Chat, FunctionCall, Part } from '@google/genai'; // Import FunctionCall and Part
+import { ConversationMemoryService, WeatherService, NoteService } from '../services'; // Import tool services
 
 /**
  * Custom hook to manage chat messages and message sending
@@ -59,49 +59,146 @@ export function useChatMessages(
     }
     
     let accumulatedResponse = "";
+    const streamingMessageId = 'ai-typing-' + Date.now();
+
     setMessages(prev => [...prev, { 
-      id: 'ai-typing', 
-      text: '', 
+      id: streamingMessageId,
+      text: 'AI is thinking...',
       sender: ChatRole.MODEL, 
       timestamp: new Date(), 
       streaming: true 
     }]);
 
-    // Get memory context if available
     const memoryContext = await getMemoryContext(text);
+    const messageContent = memoryContext ? `${memoryContext}\n\nUser query: ${text}` : text;
 
-    // Add memory context to the message if available
-    const messageWithContext = memoryContext ? 
-      { message: text, context: memoryContext } : 
-      { message: text };
+    let stream = await geminiChat.sendMessageStream(messageContent);
+    let modelRespondedWithText = false;
 
-    // Process the stream
-    const stream = await geminiChat.sendMessageStream(messageWithContext);
     for await (const chunk of stream) {
-      accumulatedResponse += chunk.text;
-      setMessages(prev => prev.map(msg => 
-        msg.id === 'ai-typing' ? { ...msg, text: accumulatedResponse } : msg
-      ));
+      if (chunk.functionCalls && chunk.functionCalls.length > 0) {
+        modelRespondedWithText = false; // Reset if function call occurs
+        const fc = chunk.functionCalls[0]; // Assuming one function call for now
+        console.log("Function call requested:", fc);
+
+        // Update UI: AI is using tool
+        setMessages(prev => prev.map(msg =>
+          msg.id === streamingMessageId ? { ...msg, text: `Using tool: ${fc.name}(${JSON.stringify(fc.args, null, 2)})` } : msg
+        ));
+
+        // Dispatch the tool call
+        let toolResult;
+        try {
+          toolResult = await toolDispatch(fc.name, fc.args);
+        } catch (toolError) {
+          console.error("Tool dispatch error:", toolError);
+          toolResult = { error: toolError instanceof Error ? toolError.message : String(toolError) };
+        }
+
+        console.log("Tool result:", toolResult);
+
+        // Update UI: Tool responded
+        const toolResponseMessage: Message = {
+          id: Date.now().toString() + '-tool',
+          text: `Tool ${fc.name} responded: ${JSON.stringify(toolResult, null, 2)}`,
+          sender: ChatRole.MODEL, // Or a new role like ChatRole.TOOL
+          timestamp: new Date(),
+        };
+        setMessages(prev => {
+            const withoutStreaming = prev.filter(m => m.id !== streamingMessageId);
+            return [...withoutStreaming, toolResponseMessage];
+        });
+
+        // Send tool response back to the model
+        // The history is managed by the `geminiChat` (ChatSession) object.
+        // We need to send a FunctionResponsePart.
+        // The SDK expects an array of Parts for the message content.
+        const functionResponsePart: Part = {
+            functionResponse: {
+                name: fc.name,
+                response: toolResult,
+            },
+        };
+
+        // Update the streaming message ID for the next phase
+        // accumulatedResponse = ""; // Reset for final AI response
+        setMessages(prev => [...prev, {
+          id: streamingMessageId, // Re-use or create new for clarity? New might be better.
+          text: 'AI is processing tool response...',
+          sender: ChatRole.MODEL,
+          timestamp: new Date(),
+          streaming: true
+        }]);
+
+        stream = await geminiChat.sendMessageStream([functionResponsePart]);
+        // Now loop through the new stream for the final text response
+        for await (const newChunk of stream) {
+            if (newChunk.text) {
+                modelRespondedWithText = true;
+                accumulatedResponse += newChunk.text;
+                setMessages(prev => prev.map(msg =>
+                    msg.id === streamingMessageId ? { ...msg, text: accumulatedResponse } : msg
+                ));
+            }
+        }
+        break; // Exit the initial loop as we've handled the function call and got a new stream
+      } else if (chunk.text) {
+        modelRespondedWithText = true;
+        accumulatedResponse += chunk.text;
+        setMessages(prev => prev.map(msg =>
+          msg.id === streamingMessageId ? { ...msg, text: accumulatedResponse } : msg
+        ));
+      }
+    } // End of initial stream processing
+
+    // Finalize AI response message
+    if (modelRespondedWithText || accumulatedResponse) { // Ensure there's text to finalize
+        const aiResponseMessage: Message = {
+          id: Date.now().toString() + '-ai-final',
+          streaming: false,
+          text: accumulatedResponse || "I've processed that request.", // Fallback if only function call happened
+          sender: ChatRole.MODEL,
+          timestamp: new Date()
+        };
+
+        setMessages(prev => prev.map(msg =>
+            msg.id === streamingMessageId ? aiResponseMessage : msg
+        ));
+        await storeMessageInMemory(aiResponseMessage);
+        return aiResponseMessage;
+    } else {
+        // If no text response from AI after tool call (or no tool call and no text), remove typing indicator
+        setMessages(prev => prev.filter(msg => msg.id !== streamingMessageId));
+        // Potentially return a generic message or handle as an error/empty response
+        const fallbackMsg = {
+            id: Date.now().toString() + '-ai-fallback',
+            text: "Request processed (no text response).",
+            sender: ChatRole.MODEL,
+            timestamp: new Date()
+        };
+        setMessages(prev => [...prev, fallbackMsg]);
+        await storeMessageInMemory(fallbackMsg);
+        return fallbackMsg;
     }
-    
-    // Create the final AI response
-    const aiResponseMessage = {
-      id: Date.now().toString() + '-ai', 
-      streaming: false, 
-      text: accumulatedResponse, 
-      sender: ChatRole.MODEL,
-      timestamp: new Date()
-    };
-    
-    // Replace the streaming message with the final message
-    setMessages(prev => prev.map(msg => 
-        msg.id === 'ai-typing' ? aiResponseMessage : msg
-    ));
-    
-    // Store AI response in memory
-    await storeMessageInMemory(aiResponseMessage);
-    
-    return aiResponseMessage;
+  };
+
+  // Helper function to dispatch tool calls
+  const toolDispatch = async (toolName: string, args: any): Promise<any> => {
+    console.log(`Dispatching tool: ${toolName}`, args);
+    switch (toolName) {
+      case 'getWeather': // This name must match the name in the tool schema provided to Gemini
+        // Assuming args are { location: "city, country" } as per schema (hypothetically)
+        // And weatherService.getWeather has been adapted to take a location string
+        if (!args.location) throw new Error("Location not provided for getWeather");
+        return WeatherService.getWeather(args.location);
+      case 'addNote': // This name must match the name in the tool schema
+        if (!args.content) throw new Error("Content not provided for addNote");
+        return NoteService.addNote(args.content);
+      // Add other tools here
+      default:
+        console.error(`Unknown tool called: ${toolName}`);
+        throw new Error(`Tool "${toolName}" is not available.`);
+    }
   };
 
   /**

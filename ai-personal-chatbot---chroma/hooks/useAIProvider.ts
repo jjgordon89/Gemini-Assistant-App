@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { AiProviderType } from '../types';
 import { GoogleGenAI, Chat } from "@google/genai";
 import { UserSettingsService, SettingName } from '../services';
+import { allTools } from '../../../toolSchemas'; // Import tool schemas
 
 /**
  * Default API keys with environment API key for Gemini
@@ -62,6 +63,7 @@ export function useAIProvider(userId: string | null) {
           config: {
             systemInstruction: 'You are a helpful AI assistant with memory. You can recall past conversations when relevant. If asked about calendar or tasks, and the user is logged into Google, you can acknowledge that you *could* interact with their Google Calendar and Tasks. For now, provide helpful, general responses. For example, if asked to create an event, describe the event details you would create. If the user is not logged into Google, gently remind them they can connect their Google account for more features.',
           },
+          tools: allTools, // Add this line
         });
         setGeminiChat(chatInstance);
         setError(null);

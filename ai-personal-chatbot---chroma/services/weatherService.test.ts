@@ -1,8 +1,4 @@
-// services/weatherService.test.ts
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { getWeather } from './weatherService'; // Adjust path as necessary
-
-// services/weatherService.test.ts
+// ai-personal-chatbot---chroma/services/weatherService.test.ts
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { getWeather } from './weatherService';
 
