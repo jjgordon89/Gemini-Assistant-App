@@ -7,3 +7,10 @@ export { default as ConversationMemoryService } from './conversationMemoryServic
 export * as GoogleAuthService from './googleAuthService';
 export * as GoogleCalendarService from './googleCalendarService';
 export * as GoogleTasksService from './googleTasksService';
+export * from './aiProviderService';
+export { default as EnhancedFileService } from './enhancedFileService';
+export { default as ExportImportService } from './exportImportService';
+export { default as BrowserMemoryService } from './browserMemoryService';
+export { default as UnifiedMemoryService } from './unifiedMemoryService';
+export { default as AdvancedRAGService } from './advancedRAGService';
+export { default as ConversationPersistenceService } from './conversationPersistenceService';

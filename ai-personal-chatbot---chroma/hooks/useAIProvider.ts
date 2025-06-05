@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { AiProviderType } from '../types';
 import { GoogleGenAI, Chat } from "@google/genai";
-import { UserSettingsService, SettingName } from '../services';
+import { UserSettingsService, SettingName, AIProviderService, createAIProviderService } from '../services';
 
 /**
  * Default API keys with environment API key for Gemini
@@ -23,6 +23,7 @@ export function useAIProvider(userId: string | null) {
   const [selectedProvider, setSelectedProvider] = useState<AiProviderType>(AiProviderType.GEMINI);
   const [apiKeys, setApiKeys] = useState<Record<AiProviderType, string>>(getDefaultApiKeys());
   const [geminiChat, setGeminiChat] = useState<Chat | null>(null);
+  const [aiProviderService, setAiProviderService] = useState<AIProviderService | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isSettingsLoaded, setIsSettingsLoaded] = useState(false);
 
@@ -47,9 +48,8 @@ export function useAIProvider(userId: string | null) {
       saveAISettings();
     }
   }, [selectedProvider, apiKeys, isSettingsLoaded, userId]);
-
   /**
-   * Initialize the Gemini chat instance
+   * Initialize the Gemini chat instance and other AI provider services
    */
   const initializeGeminiChat = () => {
     if (selectedProvider === AiProviderType.GEMINI && 
@@ -64,16 +64,38 @@ export function useAIProvider(userId: string | null) {
           },
         });
         setGeminiChat(chatInstance);
+        setAiProviderService(null); // Gemini uses its own chat instance
         setError(null);
       } catch (e) {
         console.error("Failed to initialize Gemini chat:", e);
         setError("Failed to initialize Gemini. Please check your API key and console for details.");
         setGeminiChat(null);
+        setAiProviderService(null);
       }
     } else if (selectedProvider === AiProviderType.GEMINI && 
               (!apiKeys[AiProviderType.GEMINI] || apiKeys[AiProviderType.GEMINI] === "YOUR_GEMINI_API_KEY_HERE")) {
       setError("Gemini API Key not configured. Please set it in the sidebar or environment variables.");
       setGeminiChat(null);
+      setAiProviderService(null);
+    } else {
+      // Handle other AI providers
+      setGeminiChat(null);
+      
+      const apiKey = apiKeys[selectedProvider];
+      if (apiKey && apiKey.trim()) {
+        try {
+          const service = createAIProviderService(selectedProvider, apiKey);
+          setAiProviderService(service);
+          setError(null);
+        } catch (e) {
+          console.error(`Failed to initialize ${selectedProvider} service:`, e);
+          setError(`Failed to initialize ${selectedProvider}. Please check your API key.`);
+          setAiProviderService(null);
+        }
+      } else {
+        setError(`${selectedProvider} API Key not configured. Please set it in the sidebar.`);
+        setAiProviderService(null);
+      }
     }
   };
 
@@ -167,7 +189,6 @@ export function useAIProvider(userId: string | null) {
   const handleApiKeyChange = (provider: AiProviderType, key: string) => {
     setApiKeys(prev => ({ ...prev, [provider]: key }));
   };
-
   return {
     selectedProvider,
     setSelectedProvider,
@@ -175,6 +196,7 @@ export function useAIProvider(userId: string | null) {
     setApiKeys,
     handleApiKeyChange,
     geminiChat,
+    aiProviderService,
     error,
     setError
   };

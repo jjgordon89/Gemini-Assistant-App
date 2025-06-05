@@ -1,4 +1,4 @@
-import { connect } from 'lancedb';
+import { connect } from '@lancedb/lancedb';
 import { v4 as uuidv4 } from 'uuid';
 import { Message, ChatRole } from '../types';
 

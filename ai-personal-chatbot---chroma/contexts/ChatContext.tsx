@@ -1,7 +1,7 @@
 import React, { createContext, useState, useContext, ReactNode } from 'react';
 import { Message, ChatRole, AiProviderType } from '../types';
 import { Chat } from '@google/genai';
-import { ConversationMemoryService } from '../services';
+import { ConversationMemoryService, AIProviderService } from '../services';
 
 interface ChatContextType {
   messages: Message[];
@@ -18,6 +18,7 @@ export function ChatProvider({
   children, 
   geminiChat, 
   selectedProvider,
+  aiProviderService,
   memoryService,
   memoryEnabled,
   error: parentError,
@@ -26,6 +27,7 @@ export function ChatProvider({
   children: ReactNode; 
   geminiChat: Chat | null;
   selectedProvider: AiProviderType;
+  aiProviderService: AIProviderService | null;
   memoryService: ConversationMemoryService | null;
   memoryEnabled: boolean;
   error: string | null;
@@ -104,22 +106,59 @@ export function ChatProvider({
         if (memoryService && memoryEnabled) {
           await memoryService.storeMessage(aiResponseMessage)
             .catch(err => console.error("Failed to store AI response in memory:", err));
+        }      } else {
+        // Handle other AI providers using the new service
+        if (!aiProviderService) {
+          throw new Error(`${selectedProvider} service is not initialized. Check API Key.`);
+        }
+        
+        let accumulatedResponse = "";
+        setMessages(prev => [...prev, { id: 'ai-typing', text: '', sender: ChatRole.MODEL, timestamp: new Date(), streaming: true }]);
+
+        // Get memory context if available
+        let memoryContext = "";
+        if (memoryService && memoryEnabled) {
+          try {
+            memoryContext = await memoryService.generateContextualMemory(text, 3, 0.7);
+            console.log("Memory context:", memoryContext);
+          } catch (err) {
+            console.error("Failed to retrieve memory context:", err);
+          }
         }
 
-      } else {
-        // Placeholder for other AI providers
-        await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate API call
-        const aiResponse: Message = {
-          id: Date.now().toString() + '-ai',
-          text: `Response from ${selectedProvider}: ${text} (Not implemented yet)`,
+        try {
+          // Use streaming if available
+          const stream = aiProviderService.sendMessageStream(text, memoryContext);
+          for await (const chunk of stream) {
+            accumulatedResponse += chunk;
+            setMessages(prev => prev.map(msg => 
+              msg.id === 'ai-typing' ? { ...msg, text: accumulatedResponse } : msg
+            ));
+          }
+        } catch (streamError) {
+          console.warn("Streaming failed, falling back to regular message:", streamError);
+          // Fallback to regular message if streaming fails
+          accumulatedResponse = await aiProviderService.sendMessage(text, memoryContext);
+          setMessages(prev => prev.map(msg => 
+            msg.id === 'ai-typing' ? { ...msg, text: accumulatedResponse } : msg
+          ));
+        }
+        
+        const aiResponseMessage = {
+          id: Date.now().toString() + '-ai', 
+          streaming: false, 
+          text: accumulatedResponse, 
           sender: ChatRole.MODEL,
           timestamp: new Date()
         };
-        setMessages(prevMessages => [...prevMessages, aiResponse]);
+        
+        setMessages(prev => prev.map(msg => 
+            msg.id === 'ai-typing' ? aiResponseMessage : msg
+        ));
         
         // Store AI response in memory
         if (memoryService && memoryEnabled) {
-          await memoryService.storeMessage(aiResponse)
+          await memoryService.storeMessage(aiResponseMessage)
             .catch(err => console.error("Failed to store AI response in memory:", err));
         }
       }

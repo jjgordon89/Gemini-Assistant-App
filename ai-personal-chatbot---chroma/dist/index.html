@@ -17,10 +17,12 @@
       -webkit-font-smoothing: antialiased;
       -moz-osx-font-smoothing: grayscale;
     }
+    
     .chroma-gradient-bg {
       background: radial-gradient(ellipse at center, rgba(58,16,103,0.8) 0%, rgba(0,0,0,1) 70%), 
                   linear-gradient(135deg, #1E003D 0%, #0F001F 100%);
     }
+    
     .chroma-accent-text {
       background: linear-gradient(90deg, #DA70D6, #7B68EE, #00BFFF);
       -webkit-background-clip: text;
@@ -28,31 +30,39 @@
       background-clip: text;
       text-fill-color: transparent;
     }
+    
     .chroma-border {
       border-image-slice: 1;
       border-image-source: linear-gradient(to right, #DA70D6, #7B68EE, #00BFFF);
     }
+    
     .glassmorphism {
       background: rgba(255, 255, 255, 0.05);
       backdrop-filter: blur(10px);
       -webkit-backdrop-filter: blur(10px);
       border: 1px solid rgba(255, 255, 255, 0.1);
     }
+    
     .scrollbar-thin::-webkit-scrollbar {
       width: 8px;
     }
+    
     .scrollbar-thin::-webkit-scrollbar-track {
       background: rgba(255, 255, 255, 0.05);
       border-radius: 10px;
     }
+    
     .scrollbar-thin::-webkit-scrollbar-thumb {
       background: rgba(123, 104, 238, 0.6); /* #7B68EE with opacity */
       border-radius: 10px;
     }
+    
     .scrollbar-thin::-webkit-scrollbar-thumb:hover {
       background: rgba(123, 104, 238, 0.8);
     }
   </style>
+
+<link rel="stylesheet" href="/index.css">
 <script type="importmap">
 {
   "imports": {
@@ -66,11 +76,10 @@
   }
 }
 </script>
-<link rel="stylesheet" href="/index.css">
+  <script type="module" crossorigin src="/assets/index-pLuvMJlQ.js"></script>
 </head>
 <body class="chroma-gradient-bg text-white">
   <div id="root"></div>
-  <script src="https://accounts.google.com/gsi/client" async defer></script>
-  <script type="module" src="/index.tsx"></script>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
 </body>
 </html>

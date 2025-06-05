@@ -12,6 +12,19 @@ export default defineConfig(({ mode }) => {
         alias: {
           '@': path.resolve(__dirname, '.'),
         }
+      },
+      build: {
+        rollupOptions: {
+          external: [
+            '@lancedb/lancedb',
+            'fs',
+            'path',
+            'child_process'
+          ]
+        }
+      },
+      optimizeDeps: {
+        exclude: ['@lancedb/lancedb']
       }
     };
 });

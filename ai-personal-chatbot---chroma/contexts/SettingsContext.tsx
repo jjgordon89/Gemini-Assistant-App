@@ -110,12 +110,11 @@ export function SettingsProvider({
       console.error('Failed to save user settings to Supabase:', err);
     }
   };
-
   const clearMemory = async () => {
     if (memoryService && userId) {
       try {
-        const deletedCount = await memoryService.clearUserMemory();
-        alert(`Cleared ${deletedCount} messages from memory.`);
+        await memoryService.clearAll();
+        alert("Cleared all messages from memory.");
         return Promise.resolve();
       } catch (err) {
         console.error("Failed to clear memory:", err);

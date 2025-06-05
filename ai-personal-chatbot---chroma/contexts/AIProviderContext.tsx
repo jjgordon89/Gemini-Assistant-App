@@ -1,7 +1,7 @@
 import React, { createContext, useState, useContext, useEffect, ReactNode } from 'react';
 import { AiProviderType } from '../types';
 import { GoogleGenAI, Chat } from "@google/genai";
-import { UserSettingsService, SettingName } from '../services';
+import { UserSettingsService, SettingName, AIProviderService, createAIProviderService } from '../services';
 
 interface AIProviderContextType {
   selectedProvider: AiProviderType;
@@ -10,6 +10,7 @@ interface AIProviderContextType {
   setApiKeys: React.Dispatch<React.SetStateAction<Record<AiProviderType, string>>>;
   handleApiKeyChange: (provider: AiProviderType, key: string) => void;
   geminiChat: Chat | null;
+  aiProviderService: AIProviderService | null;
   error: string | null;
   setError: React.Dispatch<React.SetStateAction<string | null>>;
 }
@@ -28,9 +29,9 @@ export function AIProviderProvider({ children, userId }: { children: ReactNode; 
   const [selectedProvider, setSelectedProvider] = useState<AiProviderType>(AiProviderType.GEMINI);
   const [apiKeys, setApiKeys] = useState<Record<AiProviderType, string>>(defaultApiKeys);
   const [geminiChat, setGeminiChat] = useState<Chat | null>(null);
+  const [aiProviderService, setAiProviderService] = useState<AIProviderService | null>(null);
   const [error, setError] = useState<string | null>(null);
-  
-  // Initialize Gemini chat when provider or API key changes
+    // Initialize Gemini chat when provider or API key changes
   useEffect(() => {
     if (selectedProvider === AiProviderType.GEMINI && apiKeys[AiProviderType.GEMINI] && apiKeys[AiProviderType.GEMINI] !== "YOUR_GEMINI_API_KEY_HERE") {
       try {
@@ -42,15 +43,37 @@ export function AIProviderProvider({ children, userId }: { children: ReactNode; 
           },
         });
         setGeminiChat(chatInstance);
+        setAiProviderService(null); // Gemini uses its own chat instance
         setError(null);
       } catch (e) {
         console.error("Failed to initialize Gemini chat:", e);
         setError("Failed to initialize Gemini. Please check your API key and console for details.");
         setGeminiChat(null);
+        setAiProviderService(null);
       }
     } else if (selectedProvider === AiProviderType.GEMINI && (!apiKeys[AiProviderType.GEMINI] || apiKeys[AiProviderType.GEMINI] === "YOUR_GEMINI_API_KEY_HERE")) {
       setError("Gemini API Key not configured. Please set it in the sidebar or environment variables.");
       setGeminiChat(null);
+      setAiProviderService(null);
+    } else {
+      // Handle other AI providers
+      setGeminiChat(null);
+      
+      const apiKey = apiKeys[selectedProvider];
+      if (apiKey && apiKey.trim()) {
+        try {
+          const service = createAIProviderService(selectedProvider, apiKey);
+          setAiProviderService(service);
+          setError(null);
+        } catch (e) {
+          console.error(`Failed to initialize ${selectedProvider} service:`, e);
+          setError(`Failed to initialize ${selectedProvider}. Please check your API key.`);
+          setAiProviderService(null);
+        }
+      } else {
+        setError(`${selectedProvider} API Key not configured. Please set it in the sidebar.`);
+        setAiProviderService(null);
+      }
     }
   }, [selectedProvider, apiKeys]);
 
@@ -90,7 +113,6 @@ export function AIProviderProvider({ children, userId }: { children: ReactNode; 
   const handleApiKeyChange = (provider: AiProviderType, key: string) => {
     setApiKeys(prev => ({ ...prev, [provider]: key }));
   };
-
   const value = {
     selectedProvider,
     setSelectedProvider,
@@ -98,6 +120,7 @@ export function AIProviderProvider({ children, userId }: { children: ReactNode; 
     setApiKeys,
     handleApiKeyChange,
     geminiChat,
+    aiProviderService,
     error,
     setError
   };

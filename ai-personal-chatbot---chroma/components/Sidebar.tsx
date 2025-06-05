@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
-import { AiProviderType, GoogleUserProfile } from '../types';
+import React, { useState, useRef } from 'react';
+import { AiProviderType, GoogleUserProfile, Message } from '../types';
 import { SettingsIcon, GoogleIcon, ChevronDownIcon, ChevronUpIcon, KeyIcon, CalendarIcon, TasksIcon, GeminiLogoIcon, OpenAILogoIcon, GroqLogoIcon, HFLogoIcon, OpenRouterLogoIcon, UserCircleIcon, AlertTriangleIcon } from './icons/ChromaIcons';
+import { EnhancedFileService, ExportImportService, ConversationPersistenceService } from '../services';
 
 interface SidebarProps {
   selectedProvider: AiProviderType;
@@ -14,6 +15,9 @@ interface SidebarProps {
   onClearMemory?: () => void;
   memoryEnabled: boolean;
   onOpenSettings?: () => void;
+  onFileUpload?: (content: string, fileName: string, fileType: string) => void;
+  messages?: Message[];
+  userId?: string | null;
 }
 
 const providerIcons: Record<AiProviderType, React.FC<{className?: string}>> = {
@@ -35,13 +39,52 @@ export const Sidebar: React.FC<SidebarProps> = ({
   isGoogleClientConfigured,
   onClearMemory,
   memoryEnabled,
-  onOpenSettings
+  onOpenSettings,
+  onFileUpload,
+  messages = [],
+  userId = null
 }) => {
   const [showApiKeys, setShowApiKeys] = useState(false);
   const [showGoogleIntegrations, setShowGoogleIntegrations] = useState(true);
   const [showMemory, setShowMemory] = useState(true);
+  const [showFileTools, setShowFileTools] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const importFileInputRef = useRef<HTMLInputElement>(null);
+  const fileService = new EnhancedFileService();
+  const exportImportService = new ExportImportService();
+  const persistenceService = ConversationPersistenceService.getInstance();
 
   const currentApiKey = apiKeys[selectedProvider];
+
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (!files || files.length === 0) return;
+
+    const file = files[0];
+    
+    try {
+      if (!fileService.isFileSupported(file)) {
+        alert(`Unsupported file type: ${file.type}`);
+        return;
+      }
+
+      const result = await fileService.processFile(file);
+      
+      if (onFileUpload) {
+        onFileUpload(result.text, result.metadata.filename, result.metadata.fileType);
+      }
+      
+      console.log('File processed successfully:', result);
+    } catch (error) {
+      console.error('Error processing file:', error);
+      alert('Error processing file. Please try again.');
+    }
+    
+    // Reset file input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
 
   return (
     <aside className="w-72 bg-black/50 backdrop-blur-md p-5 border-r border-purple-900/30 flex flex-col space-y-6 scrollbar-thin overflow-y-auto">
@@ -204,6 +247,60 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         Sign in with Google to enable personalized memory.
                     </p>
                 )}
+            </div>
+        )}
+      </div>
+
+      {/* File Tools Section */}
+      <div className="border-t border-purple-900/30 pt-6">
+        <button
+            onClick={() => setShowFileTools(!showFileTools)}
+            className="flex items-center justify-between w-full text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3 hover:text-purple-400 transition-colors"
+        >
+            File Tools
+            {showFileTools ? <ChevronUpIcon className="w-4 h-4" /> : <ChevronDownIcon className="w-4 h-4" />}
+        </button>
+        {showFileTools && (
+            <div className="space-y-3">
+                <div className="p-3 rounded-lg glassmorphism border-blue-500/50 border">
+                    <h4 className="text-sm font-medium text-gray-200 mb-2">Upload Documents</h4>
+                    <p className="text-xs text-gray-400 mb-3">
+                        Upload PDF, Word, Excel, images, or text files to analyze with AI.
+                    </p>
+                    <input
+                        ref={fileInputRef}
+                        type="file"
+                        onChange={handleFileUpload}
+                        accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.md,.json,.jpg,.jpeg,.png,.gif,.webp"
+                        className="hidden"
+                    />
+                    <button
+                        onClick={() => fileInputRef.current?.click()}
+                        className="w-full p-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors"
+                    >
+                        Choose File to Upload
+                    </button>
+                    <div className="mt-2">
+                        <p className="text-xs text-gray-500">
+                            Supported: PDF, Word, Excel, CSV, Images, Text files
+                        </p>
+                    </div>
+                </div>
+                
+                <div className="p-3 rounded-lg glassmorphism border-green-500/50 border">
+                    <h4 className="text-sm font-medium text-gray-200 mb-2">Export/Import</h4>
+                    <p className="text-xs text-gray-400 mb-3">
+                        Backup your conversations and settings.
+                    </p>
+                    <div className="flex space-x-2">
+                        <button className="flex-1 p-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-xs font-medium transition-colors">
+                            Export
+                        </button>
+                        <button className="flex-1 p-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg text-xs font-medium transition-colors">
+                            Import
+                        </button>
+                    </div>
+                </div>
             </div>
         )}
       </div>

@@ -1,12 +1,18 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Message, ChatRole, AiProviderType } from '../types';
 import { Chat } from '@google/genai';
-import { ConversationMemoryService } from '../services';
+import { 
+  AIProviderService, 
+  UnifiedMemoryService, 
+  ConversationPersistenceService,
+  AdvancedRAGService 
+} from '../services';
 
 /**
- * Custom hook to manage chat messages and message sending
+ * Enhanced hook to manage chat messages with advanced features
  * @param geminiChat Gemini chat instance
  * @param selectedProvider Current AI provider
+ * @param aiProviderService AI provider service instance
  * @param memoryService Memory service instance
  * @param memoryEnabled Whether memory is enabled
  * @returns Message state and functions
@@ -14,46 +20,100 @@ import { ConversationMemoryService } from '../services';
 export function useChatMessages(
   geminiChat: Chat | null,
   selectedProvider: AiProviderType,
-  memoryService: ConversationMemoryService | null,
+  aiProviderService: AIProviderService | null,
+  memoryService: UnifiedMemoryService | null,
   memoryEnabled: boolean
 ) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [persistenceService] = useState(() => ConversationPersistenceService.getInstance());
+  const [ragService] = useState(() => AdvancedRAGService.getInstance());
 
-  /**
-   * Store a message in memory if memory service is available and enabled
+  // Initialize persistence service
+  useEffect(() => {
+    const initializePersistence = async () => {
+      try {
+        await persistenceService.initialize();
+        
+        // Load current session messages if available
+        const currentSession = persistenceService.getCurrentSession();
+        if (currentSession) {
+          const sessionMessages = await persistenceService.getSessionMessages(currentSession.id, 20);
+          setMessages(sessionMessages);
+        }
+      } catch (err) {
+        console.error('Failed to initialize persistence service:', err);
+      }
+    };
+
+    initializePersistence();
+  }, [persistenceService]);  /**
+   * Store a message in memory and persistence if enabled
    */
   const storeMessageInMemory = async (message: Message) => {
-    if (!memoryService || !memoryEnabled) return;
+    if (!memoryEnabled) return;
     
     try {
-      await memoryService.storeMessage(message);
+      // Store in unified memory service
+      if (memoryService) {
+        await memoryService.storeMessage(message);
+      }
+      
+      // Store in persistence service for session management
+      await persistenceService.addMessageToSession(message);
     } catch (err) {
       console.error("Failed to store message in memory:", err);
     }
   };
 
   /**
-   * Get memory context for a message if memory service is available and enabled
+   * Get enhanced context using multiple services
    */
-  const getMemoryContext = async (text: string): Promise<string> => {
-    if (!memoryService || !memoryEnabled) return "";
+  const getEnhancedContext = async (text: string): Promise<string> => {
+    if (!memoryEnabled) return "";
     
     try {
-      const context = await memoryService.generateContextualMemory(text, 3, 0.7);
-      console.log("Memory context:", context);
+      let context = "";
+      
+      // Get memory context from unified memory service
+      if (memoryService) {
+        const similarMessages = await memoryService.searchSimilar(text, 3, 0.6);
+        if (similarMessages.length > 0) {
+          const memoryContext = similarMessages
+            .map(result => `Previous: ${result.entry.text}`)
+            .join('\n');
+          context += `Memory Context:\n${memoryContext}\n\n`;
+        }
+      }
+      
+      // Get RAG context from chunked documents
+      const ragResults = ragService.searchChunks(text, undefined, 3, 0.3);
+      if (ragResults.length > 0) {
+        const ragContext = ragResults
+          .map(result => `Document: ${result.chunk.text} (${result.relevanceReason})`)
+          .join('\n');
+        context += `Document Context:\n${ragContext}\n\n`;
+      }
+      
+      // Get cross-session context
+      const crossSessionResults = await persistenceService.searchAcrossSessions(text, 2);
+      if (crossSessionResults.length > 0) {
+        const sessionContext = crossSessionResults
+          .map(result => `Past Session "${result.sessionTitle}": ${result.message.text}`)
+          .join('\n');
+        context += `Previous Sessions:\n${sessionContext}`;
+      }
+      
       return context;
     } catch (err) {
-      console.error("Failed to retrieve memory context:", err);
+      console.error("Failed to retrieve enhanced context:", err);
       return "";
     }
-  };
-
-  /**
+  };  /**
    * Handle sending a message with the Gemini provider
    */
-  const handleGeminiMessage = async (text: string, userMessage: Message) => {
+  const handleGeminiMessage = async (text: string) => {
     if (!geminiChat) {
       throw new Error("Gemini chat is not initialized. Check API Key.");
     }
@@ -65,18 +125,15 @@ export function useChatMessages(
       sender: ChatRole.MODEL, 
       timestamp: new Date(), 
       streaming: true 
-    }]);
-
-    // Get memory context if available
-    const memoryContext = await getMemoryContext(text);
-
-    // Add memory context to the message if available
-    const messageWithContext = memoryContext ? 
-      { message: text, context: memoryContext } : 
-      { message: text };
+    }]);    // Get enhanced context if available
+    const enhancedContext = await getEnhancedContext(text);
 
     // Process the stream
-    const stream = await geminiChat.sendMessageStream(messageWithContext);
+    const stream = await geminiChat.sendMessageStream({
+      message: enhancedContext ? 
+        `${text}\n\nContext:\n${enhancedContext}` : 
+        text
+    });
     for await (const chunk of stream) {
       accumulatedResponse += chunk.text;
       setMessages(prev => prev.map(msg => 
@@ -85,7 +142,7 @@ export function useChatMessages(
     }
     
     // Create the final AI response
-    const aiResponseMessage = {
+    const aiResponseMessage: Message = {
       id: Date.now().toString() + '-ai', 
       streaming: false, 
       text: accumulatedResponse, 
@@ -102,29 +159,61 @@ export function useChatMessages(
     await storeMessageInMemory(aiResponseMessage);
     
     return aiResponseMessage;
-  };
-
-  /**
-   * Handle sending a message with other providers (placeholder)
+  };  /**
+   * Handle sending a message with other providers
    */
   const handleOtherProviderMessage = async (text: string) => {
-    // Placeholder for other AI providers
-    await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate API call
-    const aiResponse: Message = {
-      id: Date.now().toString() + '-ai',
-      text: `Response from ${selectedProvider}: ${text} (Not implemented yet)`,
+    if (!aiProviderService) {
+      throw new Error(`${selectedProvider} service is not initialized. Check API Key.`);
+    }
+    
+    let accumulatedResponse = "";
+    setMessages(prev => [...prev, { 
+      id: 'ai-typing', 
+      text: '', 
+      sender: ChatRole.MODEL, 
+      timestamp: new Date(), 
+      streaming: true 
+    }]);
+
+    // Get enhanced context if available
+    const enhancedContext = await getEnhancedContext(text);
+
+    try {
+      // Try streaming first
+      const stream = aiProviderService.sendMessageStream(text, enhancedContext);
+      for await (const chunk of stream) {
+        accumulatedResponse += chunk;
+        setMessages(prev => prev.map(msg => 
+          msg.id === 'ai-typing' ? { ...msg, text: accumulatedResponse } : msg
+        ));
+      }
+    } catch (streamError) {
+      console.warn("Streaming failed, falling back to regular message:", streamError);
+      // Fallback to regular message if streaming fails
+      accumulatedResponse = await aiProviderService.sendMessage(text, enhancedContext);
+      setMessages(prev => prev.map(msg => 
+        msg.id === 'ai-typing' ? { ...msg, text: accumulatedResponse } : msg
+      ));
+    }
+    
+    const aiResponseMessage: Message = {
+      id: Date.now().toString() + '-ai', 
+      streaming: false, 
+      text: accumulatedResponse, 
       sender: ChatRole.MODEL,
       timestamp: new Date()
     };
     
-    setMessages(prevMessages => [...prevMessages, aiResponse]);
+    setMessages(prev => prev.map(msg => 
+        msg.id === 'ai-typing' ? aiResponseMessage : msg
+    ));
     
     // Store AI response in memory
-    await storeMessageInMemory(aiResponse);
+    await storeMessageInMemory(aiResponseMessage);
     
-    return aiResponse;
+    return aiResponseMessage;
   };
-
   /**
    * Send a message and get a response
    */
@@ -148,7 +237,7 @@ export function useChatMessages(
       
       // Process based on provider
       if (selectedProvider === AiProviderType.GEMINI) {
-        await handleGeminiMessage(text, newUserMessage);
+        await handleGeminiMessage(text);
       } else {
         await handleOtherProviderMessage(text);
       }
@@ -168,12 +257,37 @@ export function useChatMessages(
     }
   };
 
+  /**
+   * Clear all messages and start fresh
+   */
+  const clearMessages = () => {
+    setMessages([]);
+    setError(null);
+  };
+
+  /**
+   * Load messages from a specific session
+   */
+  const loadSession = async (sessionId: string) => {
+    try {
+      const sessionMessages = await persistenceService.getSessionMessages(sessionId, 50);
+      setMessages(sessionMessages);
+    } catch (err) {
+      console.error('Failed to load session:', err);
+      setError('Failed to load session');
+    }
+  };
+
   return {
     messages,
     setMessages,
     isLoading,
     error,
     setError,
-    sendMessage
+    sendMessage,
+    clearMessages,
+    loadSession,
+    storeMessageInMemory,
+    getEnhancedContext
   };
 }

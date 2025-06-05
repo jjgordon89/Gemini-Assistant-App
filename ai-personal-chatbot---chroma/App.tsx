@@ -26,14 +26,14 @@ const App: React.FC = () => {
     error: memoryError, 
     setUserId: setMemoryUserId 
   } = useMemoryService(process.env.API_KEY);
-  
-  // Initialize AI provider
+    // Initialize AI provider
   const {
     selectedProvider,
     setSelectedProvider,
     apiKeys,
     handleApiKeyChange,
     geminiChat,
+    aiProviderService,
     error: aiError,
     setError: setAiError
   } = useAIProvider(userId);
@@ -73,8 +73,7 @@ const App: React.FC = () => {
     setTheme,
     setLanguage
   } = useUserSettings(userId);
-  
-  // Initialize chat messages
+    // Initialize chat messages
   const {
     messages,
     setMessages,
@@ -82,20 +81,19 @@ const App: React.FC = () => {
     error: chatError,
     setError: setChatError,
     sendMessage
-  } = useChatMessages(geminiChat, selectedProvider, memoryService, memoryEnabled);
+  } = useChatMessages(geminiChat, selectedProvider, aiProviderService, memoryService, memoryEnabled);
   
   // Settings modal state
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   
   // Combine errors from all sources
   const error = supabaseError || memoryError || aiError || authError || settingsError || chatError;
-  
-  // Clear user memory
+    // Clear user memory
   const handleClearMemory = async () => {
     if (memoryService && userId) {
       try {
-        const deletedCount = await memoryService.clearUserMemory();
-        alert(`Cleared ${deletedCount} messages from memory.`);
+        await memoryService.clearAll();
+        alert("Cleared all messages from memory.");
       } catch (err) {
         console.error("Failed to clear memory:", err);
         setChatError("Failed to clear memory. See console for details.");
@@ -105,10 +103,25 @@ const App: React.FC = () => {
     }
   };
 
+  // Handle file upload
+  const handleFileUpload = async (content: string, fileName: string, fileType: string) => {
+    try {
+      // Create a message with the file content
+      const fileMessage = `File uploaded: ${fileName} (${fileType})\n\nContent:\n${content}`;
+      
+      // Send the file content as a message
+      await sendMessage(fileMessage);
+      
+      console.log(`File ${fileName} uploaded and processed successfully`);
+    } catch (error) {
+      console.error('Error handling file upload:', error);
+      setChatError('Failed to process uploaded file');
+    }
+  };
+
   return (
     <HashRouter>
-      <div className="flex h-screen overflow-hidden antialiased">
-        <Sidebar
+      <div className="flex h-screen overflow-hidden antialiased">        <Sidebar
           selectedProvider={selectedProvider}
           apiKeys={apiKeys}
           onApiKeyChange={handleApiKeyChange}
@@ -120,6 +133,7 @@ const App: React.FC = () => {
           onClearMemory={handleClearMemory}
           memoryEnabled={memoryEnabled}
           onOpenSettings={() => setIsSettingsModalOpen(true)}
+          onFileUpload={handleFileUpload}
         />
         <main className="flex-1 flex flex-col h-full chroma-gradient-bg relative">
           <div className="absolute top-0 left-0 right-0 h-16 bg-black/30 backdrop-blur-sm flex items-center px-6 z-10">
