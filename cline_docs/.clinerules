@@ -1,0 +1,79 @@
+# Project Configuration
+
+## Tech Stack
+
+-   Tauri for desktop packaging
+-   tauri-plugin-stronghold for secure storage
+-   TypeScript for type safety and better developer experience
+-   Rust for backend server
+-   SvelteKit for frontend development
+-   Cytoscape.js for neural network visualization
+-   Transformers.js for Embedding Generation & NLP tasks
+-   Tesseract.js for OCR text extraction
+-   Rusqlite for database storage
+-   LancDB (via Rust crate) for Vector Database
+-   Prisma ORM for database interactions
+-   IndexedDB for caching and offline access
+-   GraphQL for API communication
+-   tract-onnx for ONNX model inference
+-   scraper for html parsing
+-   Reqwest for making HTTP requests
+-   serde/serde_json for serialization/deserialization
+-   Gemini API for AI chat responses
+-   Google Cloud credentials for calendar/tasks integration
+-   LancDB for vector embeddings storage
+-   Langchain for conversational AI capabilities and RAG     (Retrieval Augmented Generation)
+-   Ollama for alternative LLMs and models
+-   Grok AI API for additional AI functionalities
+-   OpenAI API for language processing
+-   ChatGPT API for language processing
+-   HuggingFace API for embedding generation
+-   Open-AI Compatible Models for compatibility with various LLMs
+-   huggingface access token for embedding generation
+-   JWT tokens for secure user authentication
+-   Axios for HTTP requests
+-   Moment.js for date/time manipulation
+-   Elasticsearch for search functionality
+-   MeiliSearch for full-text search
+-   Fuse.js for fuzzy string matching
+-   SvelteKit for frontend development
+-   Redux Toolkit for state management
+-   Jest/Enzyme/Mocha Chai/Sinon for testing
+-   Eslint + Prettier for code quality enforcement
+-   Vite for build tooling
+-   GitHub Actions for CI/CD pipelines
+
+## Project Structure
+
+/src
+/app # Next.js App Router pages
+/components # React components
+/lib # Utility functions
+/types # TypeScript types
+/supabase
+/migrations # SQL migration files
+/seed # Seed data files
+/public # Static assets
+
+## Database Migrations
+
+SQL files in /supabase/migrations should:
+
+-   Use sequential numbering: 001, 002, etc.
+-   Include descriptive names
+-   Be reviewed by Cline before execution
+    Example: 001_create_users_table.sql
+
+## Development Workflow
+
+-   Cline helps write and review code changes
+-   Vercel automatically deploys from main branch
+-   Database migrations reviewed by Cline before execution
+
+## Security
+
+DO NOT read or modify:
+
+-   .env files
+-   \*_/config/secrets._
+-   Any file containing API keys or credentials
