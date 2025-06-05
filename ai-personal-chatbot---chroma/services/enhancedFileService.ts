@@ -1,5 +1,7 @@
 // Enhanced File Processing Service
 // Supports multiple file formats including PDF, images, Word documents, and spreadsheets
+import mammoth from 'mammoth';
+import * as XLSX from 'xlsx';
 
 export interface FileProcessingResult {
   text: string;
@@ -17,24 +19,48 @@ export interface FileProcessor {
   processFile(file: File): Promise<FileProcessingResult>;
 }
 
-// PDF Processor (existing functionality enhanced)
+// PDF Processor (integrating with existing functionality)
 export class PDFProcessor implements FileProcessor {
   canProcess(fileType: string): boolean {
     return fileType === 'application/pdf';
   }
 
   async processFile(file: File): Promise<FileProcessingResult> {
-    // This would integrate with existing PDF processing
-    // For now, return a placeholder
-    return {
-      text: `PDF content from ${file.name} would be extracted here`,
-      metadata: {
-        filename: file.name,
-        fileType: 'PDF',
-        size: file.size,
-        pages: 1
+    try {
+      // Import PDF.js dynamically to avoid issues
+      const pdfjsLib = await import('pdfjs-dist');
+      
+      // Configure worker
+      pdfjsLib.GlobalWorkerOptions.workerSrc = 'pdfjs-dist/build/pdf.worker.mjs';
+      
+      const arrayBuffer = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      
+      let extractedText = '';
+      const numPages = pdf.numPages;
+      
+      // Extract text from all pages
+      for (let pageNum = 1; pageNum <= numPages; pageNum++) {
+        const page = await pdf.getPage(pageNum);
+        const textContent = await page.getTextContent();
+        const pageText = textContent.items
+          .map((item: any) => item.str)
+          .join(' ');
+        extractedText += pageText + '\n';
       }
-    };
+      
+      return {
+        text: extractedText.trim(),
+        metadata: {
+          filename: file.name,
+          fileType: 'PDF',
+          size: file.size,
+          pages: numPages
+        }
+      };
+    } catch (error) {
+      throw new Error(`Failed to process PDF: ${error}`);
+    }
   }
 }
 
@@ -94,18 +120,37 @@ export class WordProcessor implements FileProcessor {
     return fileType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
            fileType === 'application/msword';
   }
-
   async processFile(file: File): Promise<FileProcessingResult> {
-    // For DOCX files, we would need to parse the XML structure
-    // For now, return a placeholder
-    return {
-      text: `Word document content from ${file.name} would be extracted here`,
-      metadata: {
-        filename: file.name,
-        fileType: 'Word Document',
-        size: file.size
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      
+      if (file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+        // Process DOCX files
+        const result = await mammoth.extractRawText({ arrayBuffer });
+        return {
+          text: result.value,
+          metadata: {
+            filename: file.name,
+            fileType: 'Word Document',
+            size: file.size
+          }
+        };
+      } else if (file.type === 'application/msword') {
+        // DOC files are not directly supported by mammoth, return error message
+        return {
+          text: `Legacy Word document format (.doc) is not supported. Please convert to .docx format.`,
+          metadata: {
+            filename: file.name,
+            fileType: 'Word Document (Legacy)',
+            size: file.size
+          }
+        };
+      } else {
+        throw new Error('Unsupported Word document format');
       }
-    };
+    } catch (error) {
+      throw new Error(`Failed to process Word document: ${error}`);
+    }
   }
 }
 
@@ -116,22 +161,60 @@ export class SpreadsheetProcessor implements FileProcessor {
            fileType === 'application/vnd.ms-excel' ||
            fileType === 'text/csv';
   }
-
   async processFile(file: File): Promise<FileProcessingResult> {
     if (file.type === 'text/csv') {
       return this.processCSV(file);
     }
     
-    // For Excel files, we would need to parse the XML structure
-    // For now, return a placeholder
-    return {
-      text: `Spreadsheet content from ${file.name} would be extracted here`,
-      metadata: {
-        filename: file.name,
-        fileType: 'Spreadsheet',
-        size: file.size
-      }
-    };
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+      
+      let extractedText = `Spreadsheet: ${file.name}\n`;
+      extractedText += `Worksheets: ${workbook.SheetNames.length}\n\n`;
+      
+      // Process each worksheet
+      workbook.SheetNames.forEach((sheetName, index) => {
+        const worksheet = workbook.Sheets[sheetName];
+        const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+        
+        extractedText += `Sheet ${index + 1}: ${sheetName}\n`;
+        
+        if (jsonData.length > 0) {
+          // Add headers if they exist
+          const headers = jsonData[0] as any[];
+          if (headers && headers.length > 0) {
+            extractedText += `Headers: ${headers.join(', ')}\n`;
+          }
+          
+          // Add sample data (first few rows)
+          const sampleRows = Math.min(5, jsonData.length);
+          extractedText += `Data (${sampleRows} of ${jsonData.length} rows):\n`;
+          
+          for (let i = 0; i < sampleRows; i++) {
+            const row = jsonData[i] as any[];
+            if (row && row.length > 0) {
+              extractedText += `Row ${i + 1}: ${row.join(' | ')}\n`;
+            }
+          }
+        } else {
+          extractedText += 'No data found in this sheet.\n';
+        }
+        
+        extractedText += '\n';
+      });
+      
+      return {
+        text: extractedText,
+        metadata: {
+          filename: file.name,
+          fileType: 'Spreadsheet',
+          size: file.size
+        }
+      };
+    } catch (error) {
+      throw new Error(`Failed to process spreadsheet: ${error}`);
+    }
   }
 
   private async processCSV(file: File): Promise<FileProcessingResult> {
