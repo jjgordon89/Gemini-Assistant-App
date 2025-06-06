@@ -9,6 +9,8 @@
     "github.copilot.chat.agent.thinkingTool": true,
     "github.copilot.chat.codesearch.enabled": true,
     "github.copilot.nextEditSuggestions.fixes": true,
-    "github.copilot.nextEditSuggestions.enabled": true
+    "github.copilot.nextEditSuggestions.enabled": true,
+    "specstory.showDeveloperTools": true,
+    "specstory.derivedRules.enabled": true
     // "github.copilot.nextEditSuggestions.inline.enabled": true,
 }
