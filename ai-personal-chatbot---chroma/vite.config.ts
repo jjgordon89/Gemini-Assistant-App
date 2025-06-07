@@ -16,7 +16,7 @@ export default defineConfig(({ mode }) => {
       build: {
         rollupOptions: {
           external: [
-            '@lancedb/lancedb',
+            'vectordb',
             'fs',
             'path',
             'child_process'
@@ -24,7 +24,7 @@ export default defineConfig(({ mode }) => {
         }
       },
       optimizeDeps: {
-        exclude: ['@lancedb/lancedb']
+        exclude: ['vectordb']
       }
     };
 });
