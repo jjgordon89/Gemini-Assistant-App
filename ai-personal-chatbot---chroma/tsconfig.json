@@ -26,5 +26,14 @@
     "paths": {
       "@/*" :  ["./*"]
     }
-  }
+  },
+  "include": [
+    "**/*.ts",
+    "**/*.tsx",
+    "types/**/*.d.ts"
+  ],
+  "exclude": [ // Added exclude to avoid checking node_modules and dist
+    "node_modules",
+    "dist"
+  ]
 }

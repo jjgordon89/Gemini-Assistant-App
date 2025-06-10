@@ -28,7 +28,7 @@ export class PDFProcessor implements FileProcessor {
   async processFile(file: File): Promise<FileProcessingResult> {
     try {
       // Import PDF.js dynamically to avoid issues
-      const pdfjsLib = await import('pdfjs-dist');
+      const pdfjsLib = await import('pdfjs-dist/build/pdf');
       
       // Configure worker
       pdfjsLib.GlobalWorkerOptions.workerSrc = 'pdfjs-dist/build/pdf.worker.mjs';
